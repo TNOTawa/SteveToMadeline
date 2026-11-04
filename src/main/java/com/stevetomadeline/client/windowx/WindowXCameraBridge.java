@@ -12,8 +12,11 @@ import com.xutrain.windowx.api.window.WindowId;
 import com.xutrain.windowx.api.window.WindowOptions;
 import com.xutrain.windowx.camera.CameraRegistry;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.network.chat.Component;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Quaternionf;
 import org.slf4j.Logger;
@@ -25,7 +28,8 @@ import org.slf4j.Logger;
  * （见 CameraRenderManager 里的 {@code Matrix4f.ortho}），单位是方块而非角度。
  *
  * <p>2D 模式：相机与玩家等高、pitch=0，由 mixin 把近/远裁剪面收成一层切片；
- * 2.5D 模式：相机抬高并下俯 12°，能看到方块顶面，但仍是横版侧视。
+ * 2.5D 模式：相机抬高并下俯 12°，能看到方块顶面，但仍按横版侧视取景；
+ * 相机位置会沿视线做方块射线检测，避免整个镜头埋进山体里。
  */
 public final class WindowXCameraBridge {
     private static final Logger LOG = LogUtils.getLogger();
@@ -37,8 +41,10 @@ public final class WindowXCameraBridge {
     private static final int TEXTURE_WIDTH = 960;
     private static final int TEXTURE_HEIGHT = 540;
     private static final float RENDER_DISTANCE = 32.0f;
+    private static final double CAMERA_CLEARANCE = 0.3;
 
     private static ClientWindow window;
+    private static volatile CameraRegistry.Pose lastPose;
     private static boolean active;
     private static float appliedHalfHeight = Float.NaN;
 
@@ -47,6 +53,11 @@ public final class WindowXCameraBridge {
 
     public static boolean isActive() {
         return active;
+    }
+
+    /** 最近一帧的相机姿态；渲染附加层用它换算相机相对坐标。 */
+    public static CameraRegistry.Pose lastPose() {
+        return lastPose;
     }
 
     public static void start() {
@@ -98,6 +109,7 @@ public final class WindowXCameraBridge {
     public static void stop() {
         active = false;
         appliedHalfHeight = Float.NaN;
+        lastPose = null;
         if (window != null) {
             try {
                 window.close();
@@ -135,16 +147,15 @@ public final class WindowXCameraBridge {
         Minecraft mc = Minecraft.getInstance();
         LocalPlayer player = mc.player;
         if (player == null || mc.level == null) {
-            return null;
+            return lastPose;
         }
 
-        // 侧视方向吸附到最近的 90°。
         float yaw = Math.round(player.getYRot() / 90.0f) * 90.0f;
 
         float pitch = 0.0f;
         double upOffset = 0.0;
         if (RenderModeManager.isIsometric()) {
-            // 下俯 12°，同时把相机抬高 tan(12°)*distance，让玩家仍在画面中心。
+            // 下俯 12°，相机相应抬高，让玩家保持在画面中心。
             pitch = 12.0f;
             upOffset = Math.tan(Math.toRadians(pitch)) * currentDistance();
         }
@@ -152,8 +163,33 @@ public final class WindowXCameraBridge {
         Vec3 eye = player.getEyePosition(partialTick);
         double lookX = -Math.sin(Math.toRadians(yaw));
         double lookZ = Math.cos(Math.toRadians(yaw));
-        Vec3 pos = eye.add(-lookX * currentDistance(), upOffset, -lookZ * currentDistance());
+        Vec3 desired = eye.add(-lookX * currentDistance(), upOffset, -lookZ * currentDistance());
 
-        return new CameraRegistry.Pose(pos, yaw, pitch, new Quaternionf());
+        if (RenderModeManager.isIsometric()) {
+            desired = clampOutOfBlocks(mc.level, player, eye, desired);
+        }
+
+        lastPose = new CameraRegistry.Pose(desired, yaw, pitch, new Quaternionf());
+        return lastPose;
+    }
+
+    /** 沿眼睛到目标位置的连线做方块检测，撞墙时把相机停在墙前，避免镜头埋进山体看到天空。 */
+    private static Vec3 clampOutOfBlocks(ClientLevel level, LocalPlayer player, Vec3 eye, Vec3 desired) {
+        BlockHitResult hit = level.clip(new ClipContext(
+                eye, desired,
+                ClipContext.Block.COLLIDER,
+                ClipContext.Fluid.NONE,
+                player));
+        if (hit.getType() == HitResult.Type.MISS) {
+            return desired;
+        }
+        Vec3 offset = desired.subtract(eye);
+        double length = offset.length();
+        if (length < 0.001) {
+            return eye;
+        }
+        double available = eye.distanceTo(hit.getLocation()) - CAMERA_CLEARANCE;
+        double scale = Math.max(0.02, Math.min(1.0, available / length));
+        return eye.add(offset.scale(scale));
     }
 }
