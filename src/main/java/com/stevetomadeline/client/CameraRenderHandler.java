@@ -53,6 +53,10 @@ public final class CameraRenderHandler {
     private static final float BACKGROUND_R = 0.05f;
     private static final float BACKGROUND_G = 0.06f;
     private static final float BACKGROUND_B = 0.10f;
+    /** 屏幕空间正交投影的 z 范围 -1000..1000；写入小于远平面的深度，避免被天空蒙版当成天空。 */
+    private static final float Z_BACKGROUND = 500.0f;
+    private static final float Z_TILES = 400.0f;
+    private static final float Z_MARKER = 300.0f;
 
     private static boolean loggedOnce;
 
@@ -132,8 +136,9 @@ public final class CameraRenderHandler {
                 new Matrix4f().setOrtho(0.0f, viewWidth, viewHeight, 0.0f, -1000.0f, 1000.0f),
                 VertexSorting.DISTANCE_TO_ORIGIN);
 
-        RenderSystem.disableDepthTest();
-        RenderSystem.depthMask(false);
+        // 必须写深度：WindowX 的 CameraSkyMask 会用深度纹理把“远平面”像素清成透明。
+        RenderSystem.enableDepthTest();
+        RenderSystem.depthMask(true);
         RenderSystem.disableCull();
         try {
             drawBackground(viewWidth, viewHeight);
@@ -174,15 +179,15 @@ public final class CameraRenderHandler {
         float size = Math.min(width, height) * 0.1f;
         RenderSystem.setShader(GameRenderer::getPositionColorShader);
         BufferBuilder buffer = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
-        buffer.addVertex(0.0f, 0.0f, 0.0f).setColor(1.0f, 0.0f, 1.0f, 1.0f);
-        buffer.addVertex(0.0f, size, 0.0f).setColor(1.0f, 0.0f, 1.0f, 1.0f);
-        buffer.addVertex(size, size, 0.0f).setColor(1.0f, 0.0f, 1.0f, 1.0f);
-        buffer.addVertex(size, 0.0f, 0.0f).setColor(1.0f, 0.0f, 1.0f, 1.0f);
+        buffer.addVertex(0.0f, 0.0f, Z_MARKER).setColor(1.0f, 0.0f, 1.0f, 1.0f);
+        buffer.addVertex(0.0f, size, Z_MARKER).setColor(1.0f, 0.0f, 1.0f, 1.0f);
+        buffer.addVertex(size, size, Z_MARKER).setColor(1.0f, 0.0f, 1.0f, 1.0f);
+        buffer.addVertex(size, 0.0f, Z_MARKER).setColor(1.0f, 0.0f, 1.0f, 1.0f);
         BufferUploader.drawWithShader(buffer.buildOrThrow());
     }
 
     private static void colorVertex(BufferBuilder buffer, float x, float y) {
-        buffer.addVertex(x, y, 0.0f).setColor(BACKGROUND_R, BACKGROUND_G, BACKGROUND_B, 1.0f);
+        buffer.addVertex(x, y, Z_BACKGROUND).setColor(BACKGROUND_R, BACKGROUND_G, BACKGROUND_B, 1.0f);
     }
 
     private static int drawTiles(ClientLevel level, Vec3 eye, Vec3 right, boolean zPlane,
@@ -264,7 +269,7 @@ public final class CameraRenderHandler {
 
     private static void tileVertex(BufferBuilder buffer, float x, float y,
                                    float u, float v, float red, float green, float blue, float alpha) {
-        buffer.addVertex(x, y, 0.0f)
+        buffer.addVertex(x, y, Z_TILES)
                 .setUv(u, v)
                 .setColor(red, green, blue, alpha);
     }
