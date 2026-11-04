@@ -136,9 +136,13 @@ public final class CameraRenderHandler {
                 new Matrix4f().setOrtho(0.0f, viewWidth, viewHeight, 0.0f, -1000.0f, 1000.0f),
                 VertexSorting.DISTANCE_TO_ORIGIN);
 
-        // 必须写深度：WindowX 的 CameraSkyMask 会用深度纹理把“远平面”像素清成透明。
+        // 必须写深度：WindowX 的 CameraSkyMask 会用深度纹理把“天空”像素清成透明。
+        // 但深度缓冲的清除值与比较方向由 WindowX/管线决定，这里用 ALWAYS 保证每一层都落笔，
+        // 同时把深度写进去（叠加层彼此用绘制顺序覆盖）。
+        int previousDepthFunc = GL11.glGetInteger(GL11.GL_DEPTH_FUNC);
         RenderSystem.enableDepthTest();
         RenderSystem.depthMask(true);
+        RenderSystem.depthFunc(GL11.GL_ALWAYS);
         RenderSystem.disableCull();
         try {
             drawBackground(viewWidth, viewHeight);
@@ -153,6 +157,7 @@ public final class CameraRenderHandler {
                         Minecraft.getInstance().getWindow().getHeight());
             }
         } finally {
+            RenderSystem.depthFunc(previousDepthFunc);
             RenderSystem.depthMask(true);
             RenderSystem.enableDepthTest();
             RenderSystem.enableCull();
