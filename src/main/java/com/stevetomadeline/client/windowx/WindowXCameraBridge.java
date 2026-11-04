@@ -4,6 +4,7 @@ import com.mojang.logging.LogUtils;
 import com.stevetomadeline.Config;
 import com.stevetomadeline.client.mode.RenderModeManager;
 import com.xutrain.windowx.api.WindowXClientApi;
+import com.xutrain.windowx.api.window.CameraFeature;
 import com.xutrain.windowx.api.window.CameraOptions;
 import com.xutrain.windowx.api.window.CameraProjection;
 import com.xutrain.windowx.api.window.ClientWindow;
@@ -14,6 +15,7 @@ import com.xutrain.windowx.camera.CameraRegistry;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
@@ -81,12 +83,28 @@ public final class WindowXCameraBridge {
                     .build());
             window.bindCamera(CAMERA_ID, WindowDisplayMode.FIT);
             applyCameraOptions(currentHalfHeight());
+            applyModeFeatures();
 
             active = true;
             LOG.info("[WindowX] camera started (id={}, mode={})", CAMERA_ID, RenderModeManager.mode());
         } catch (Throwable t) {
             LOG.error("[WindowX] failed to start camera", t);
             stop();
+        }
+    }
+
+    /** 2D 模式关掉天空/云/天气，避免云层盖在切片上；2.5D 恢复。 */
+    public static void applyModeFeatures() {
+        if (window == null) {
+            return;
+        }
+        try {
+            boolean flat = RenderModeManager.isFlat2D();
+            window.setCameraFeature(CameraFeature.SKY, !flat);
+            window.setCameraFeature(CameraFeature.CLOUDS, !flat);
+            window.setCameraFeature(CameraFeature.WEATHER, !flat);
+        } catch (Throwable t) {
+            LOG.warn("[WindowX] failed to apply camera features", t);
         }
     }
 
@@ -190,6 +208,16 @@ public final class WindowXCameraBridge {
         }
         double available = eye.distanceTo(hit.getLocation()) - CAMERA_CLEARANCE;
         double scale = Math.max(0.02, Math.min(1.0, available / length));
-        return eye.add(offset.scale(scale));
+        Vec3 result = eye.add(offset.scale(scale));
+        // 射线可能刚好落在方块表面，再做一次“最终位置是否在实心方块内”的兜底收缩。
+        for (int guard = 0; guard < 12; guard++) {
+            BlockPos pos = BlockPos.containing(result);
+            if (!level.getBlockState(pos).canOcclude() || scale <= 0.02) {
+                break;
+            }
+            scale *= 0.75;
+            result = eye.add(offset.scale(scale));
+        }
+        return result;
     }
 }

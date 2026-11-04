@@ -61,8 +61,12 @@ public final class RenderModeManager {
         mode = next;
         if (next == Mode.VANILLA) {
             WindowXCameraBridge.stop();
-        } else if (!WindowXCameraBridge.isActive()) {
-            WindowXCameraBridge.start();
+        } else {
+            if (!WindowXCameraBridge.isActive()) {
+                WindowXCameraBridge.start();
+            } else {
+                WindowXCameraBridge.applyModeFeatures();
+            }
         }
         Minecraft mc = Minecraft.getInstance();
         if (mc.player != null) {
