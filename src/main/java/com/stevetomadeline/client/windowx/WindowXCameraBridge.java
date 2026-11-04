@@ -11,13 +11,10 @@ import com.xutrain.windowx.api.window.WindowId;
 import com.xutrain.windowx.api.window.WindowOptions;
 import com.xutrain.windowx.camera.CameraRegistry;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
-import net.minecraft.util.Mth;
-import net.minecraft.world.level.ClipContext;
-import net.minecraft.world.phys.BlockHitResult;
-import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Quaternionf;
 import org.slf4j.Logger;
@@ -29,21 +26,19 @@ import org.slf4j.Logger;
  * （见 CameraRenderManager 里的 {@code Matrix4f.ortho}），单位是方块，而不是角度。
  * 因此“远近”由配置项的 orthoHalfHeight 控制，而不是摄像机距离。
  *
- * <p>摄像机位置会沿视线反方向做一次方块/流体射线检测，避免相机嵌进方块后
- * 背面剔除导致天空盒穿帮，以及水面/方块表面与近裁剪面打架造成的闪烁。
+ * <p>摄像机保持固定距离，不再因墙面向玩家收缩；挡在前面的几何体由
+ * {@code CameraRenderManagerMixin} 抬高近裁剪面切掉（见 foregroundCut）。
  */
 public final class WindowXCameraBridge {
     private static final Logger LOG = LogUtils.getLogger();
 
     private static final WindowId WINDOW_ID = WindowId.of("stevetomadeline", "camera");
-    private static final String CAMERA_ID = "stevetomadeline:follow";
+    public static final String CAMERA_ID = "stevetomadeline:follow";
     private static final Object CAMERA_OWNER = new Object();
 
     private static final int TEXTURE_WIDTH = 960;
     private static final int TEXTURE_HEIGHT = 540;
     private static final float RENDER_DISTANCE = 32.0f;
-    /** 摄像机与命中面之间保留的间隙，避免表面与近裁剪面（0.05）打架。 */
-    private static final double SURFACE_EPSILON = 0.25;
 
     private static ClientWindow window;
     private static CameraRegistry.Pose lastPose;
@@ -146,6 +141,26 @@ public final class WindowXCameraBridge {
         appliedHalfHeight = halfHeight;
     }
 
+    /** 最近一帧摄像机姿态，供渲染附加层（雾、背景板）读取。 */
+    public static CameraRegistry.Pose lastPose() {
+        return lastPose;
+    }
+
+    /** 摄像机当前是否嵌在实体方块里；是则返回该方块，用于绘制裁切背景。 */
+    public static BlockState embeddedBlockState() {
+        Minecraft mc = Minecraft.getInstance();
+        CameraRegistry.Pose pose = lastPose;
+        if (pose == null || mc.level == null) {
+            return null;
+        }
+        BlockPos pos = BlockPos.containing(pose.position());
+        BlockState state = mc.level.getBlockState(pos);
+        if (state.isAir() || !state.canOcclude()) {
+            return null;
+        }
+        return state;
+    }
+
     private static float currentHalfHeight() {
         return (float) Config.ORTHO_HALF_HEIGHT.get().doubleValue();
     }
@@ -158,8 +173,7 @@ public final class WindowXCameraBridge {
     private static CameraRegistry.Pose locate(float partialTick) {
         Minecraft mc = Minecraft.getInstance();
         LocalPlayer player = mc.player;
-        ClientLevel level = mc.level;
-        if (player == null || level == null) {
+        if (player == null || mc.level == null) {
             return lastPose;
         }
 
@@ -167,31 +181,12 @@ public final class WindowXCameraBridge {
         float yaw = Math.round(player.getYRot() / 90.0f) * 90.0f;
 
         Vec3 eye = player.getEyePosition(partialTick);
-        Vec3 back = new Vec3(-Math.sin(Math.toRadians(yaw)), 0.0, Math.cos(Math.toRadians(yaw))).scale(-1.0);
-        double distance = clampDistance(level, player, eye, back, currentDistance());
-        Vec3 pos = eye.add(back.scale(distance));
+        double lookX = -Math.sin(Math.toRadians(yaw));
+        double lookZ = Math.cos(Math.toRadians(yaw));
+        Vec3 pos = eye.add(-lookX * currentDistance(), 0.0, -lookZ * currentDistance());
 
         lastPose = new CameraRegistry.Pose(pos, yaw, 0.0f, new Quaternionf());
         return lastPose;
-    }
-
-    /**
-     * 沿相机后退方向做射线检测：撞到方块或（非水下时的）流体就把相机拉近，
-     * 保证相机始终处在开放空间里。水下不把水当作阻挡，否则玩家潜水时相机会贴脸。
-     */
-    private static double clampDistance(ClientLevel level, LocalPlayer player, Vec3 eye, Vec3 back, double desired) {
-        Vec3 target = eye.add(back.scale(desired));
-        ClipContext.Fluid fluidMode = player.isInWater() ? ClipContext.Fluid.NONE : ClipContext.Fluid.ANY;
-        BlockHitResult hit = level.clip(new ClipContext(
-                eye, target,
-                ClipContext.Block.COLLIDER,
-                fluidMode,
-                player));
-        if (hit.getType() == HitResult.Type.MISS) {
-            return desired;
-        }
-        double available = eye.distanceTo(hit.getLocation()) - SURFACE_EPSILON;
-        return Mth.clamp(available, 0.1, desired);
     }
 
     private static void notifyPlayer(String message) {

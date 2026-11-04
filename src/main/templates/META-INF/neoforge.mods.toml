@@ -15,6 +15,10 @@ Minecraft 1.21.1 NeoForge 上的 Celeste 风格二维横版移动：R 进入/退
 由 WindowX 提供侧视正交摄像机，玛德琳由本地 Celeste 资源动态加载。
 '''
 
+# 前景切片需要修改 WindowX 摄像机的投影近平面
+[[mixins]]
+config="stevetomadeline.mixins.json"
+
 # WindowX 是硬前置（API 版本锁定在 libs 内）
 [[dependencies.${mod_id}]]
     modId="windowx"
