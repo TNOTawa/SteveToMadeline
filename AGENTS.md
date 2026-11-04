@@ -50,6 +50,7 @@
 - **不占用 C 盘**：JDK、Gradle、依赖缓存、下载、临时目录一律放在 D:/F:；任何工具默认写 C 盘时要显式改到 D:/F:。
 - **能在工作区内完成的绝不离开工作区**：源码、脚本、测试数据、生成的报告默认落在仓库内；只有明确约定的外部设施（见下）才写到仓库外。
 - **隔离 Minecraft 实例的 mods 目录只放最新构建产物**：每次更新先删旧版本再放新包，不堆砌历史 jar 或备份。
+- **网络**：`maven.neoforged.net` 直连被阻断，只能经本机代理 `<本机代理>`；Mojang、GitHub、Gradle 官方源均可直连。`<GRADLE_USER_HOME>\gradle.properties` 已把 Mojang 域写入 nonProxyHosts，代理只承担 NeoForged 流量。
 - **已固定的外部设施**（不得随意改路径）：
   - JDK 21：`<JDK 21 目录>`
   - Gradle 用户目录 / 发行版：`<GRADLE_USER_HOME>`
