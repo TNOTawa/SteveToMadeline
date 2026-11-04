@@ -1,0 +1,9 @@
+{
+  "stevetomadeline.configuration.title": "SteveToMadeline 配置",
+  "stevetomadeline.configuration.section.stevetomadeline.common.toml": "SteveToMadeline 配置",
+  "stevetomadeline.configuration.section.stevetomadeline.common.toml.title": "SteveToMadeline 配置",
+  "stevetomadeline.configuration.celesteModeEnabled": "启用 Celeste 模式",
+
+  "key.categories.stevetomadeline": "SteveToMadeline",
+  "key.stevetomadeline.toggle_celeste_mode": "切换 Celeste 摄像机"
+}

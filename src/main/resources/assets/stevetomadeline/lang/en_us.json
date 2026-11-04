@@ -2,5 +2,8 @@
   "stevetomadeline.configuration.title": "SteveToMadeline Configs",
   "stevetomadeline.configuration.section.stevetomadeline.common.toml": "SteveToMadeline Configs",
   "stevetomadeline.configuration.section.stevetomadeline.common.toml.title": "SteveToMadeline Configs",
-  "stevetomadeline.configuration.celesteModeEnabled": "Celeste Mode Enabled"
+  "stevetomadeline.configuration.celesteModeEnabled": "Celeste Mode Enabled",
+
+  "key.categories.stevetomadeline": "SteveToMadeline",
+  "key.stevetomadeline.toggle_celeste_mode": "Toggle Celeste Camera"
 }
