@@ -14,7 +14,7 @@ public final class Config {
 
     public static final ModConfigSpec.DoubleValue CAMERA_DISTANCE = BUILDER
             .comment("侧视摄像机与眼睛的水平距离（方块）。正交投影下它不改变缩放，只决定相机站位与切片范围。")
-            .defineInRange("cameraDistance", 8.0, 0.5, 12.0);
+            .defineInRange("cameraDistance", 8.0, 0.5, 128.0);
 
     public static final ModConfigSpec.DoubleValue ORTHO_HALF_HEIGHT = BUILDER
             .comment("正交视图的半高（方块，屏幕上垂直方向可见世界高度的一半）。数值越小画面越近。")

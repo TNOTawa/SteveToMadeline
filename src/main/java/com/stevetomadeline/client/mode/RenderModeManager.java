@@ -1,14 +1,12 @@
 package com.stevetomadeline.client.mode;
 
-import com.stevetomadeline.client.windowx.WindowXCameraBridge;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 
 /**
- * R 键的三态循环：原版 → 纯 2D 平面 → 2.5D（侧视下俯 12°）→ 原版。
+ * R 键的三态循环：原版 → 2D 平面 → 2.5D（侧视下俯 12°）→ 原版。
  *
- * <p>“原版”表示关闭 WindowX 摄像机窗口，回到 Minecraft 主视角；
- * 另外两个模式共用同一个摄像机窗口，只是姿态与渲染附加层不同。
+ * <p>两种摄像机模式都直接接管主游戏窗口的摄像机与投影，不再创建 WindowX 独立窗口。
  */
 public final class RenderModeManager {
     public enum Mode {
@@ -36,6 +34,10 @@ public final class RenderModeManager {
         return mode;
     }
 
+    public static boolean isCameraMode() {
+        return mode != Mode.VANILLA;
+    }
+
     public static boolean isFlat2D() {
         return mode == Mode.FLAT_2D;
     }
@@ -44,7 +46,7 @@ public final class RenderModeManager {
         return mode == Mode.ISOMETRIC;
     }
 
-    /** 退出世界时复位，避免重新进入后摄像机状态与模式脱节。 */
+    /** 退出世界时复位。 */
     public static void reset() {
         mode = Mode.VANILLA;
     }
@@ -59,15 +61,6 @@ public final class RenderModeManager {
 
     private static void switchTo(Mode next) {
         mode = next;
-        if (next == Mode.VANILLA) {
-            WindowXCameraBridge.stop();
-        } else {
-            if (!WindowXCameraBridge.isActive()) {
-                WindowXCameraBridge.start();
-            } else {
-                WindowXCameraBridge.applyModeFeatures();
-            }
-        }
         Minecraft mc = Minecraft.getInstance();
         if (mc.player != null) {
             mc.player.displayClientMessage(Component.literal("SteveToMadeline: " + next.label()), true);

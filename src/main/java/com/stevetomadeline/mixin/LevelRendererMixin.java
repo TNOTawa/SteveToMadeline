@@ -2,8 +2,6 @@ package com.stevetomadeline.mixin;
 
 import com.stevetomadeline.Config;
 import com.stevetomadeline.client.mode.RenderModeManager;
-import com.stevetomadeline.client.windowx.WindowXCameraBridge;
-import com.xutrain.windowx.camera.CameraRenderManager;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -26,9 +24,7 @@ public abstract class LevelRendererMixin {
     @Inject(method = "renderSectionLayer", at = @At("HEAD"), cancellable = true, require = 0)
     private void stevetomadeline$skipChunksInFlat2D(RenderType renderType, double x, double y, double z,
                                                     Matrix4f projection, Matrix4f pose, CallbackInfo ci) {
-        if (RenderModeManager.isFlat2D()
-                && WindowXCameraBridge.isActive()
-                && CameraRenderManager.isRendering()) {
+        if (RenderModeManager.isFlat2D()) {
             ci.cancel();
         }
     }
@@ -37,9 +33,7 @@ public abstract class LevelRendererMixin {
     private void stevetomadeline$filterEntitiesInFlat2D(Entity entity, double x, double y, double z,
                                                         float partialTick, PoseStack poseStack,
                                                         MultiBufferSource bufferSource, CallbackInfo ci) {
-        if (!RenderModeManager.isFlat2D()
-                || !WindowXCameraBridge.isActive()
-                || !CameraRenderManager.isRendering()) {
+        if (!RenderModeManager.isFlat2D()) {
             return;
         }
         LocalPlayer player = Minecraft.getInstance().player;

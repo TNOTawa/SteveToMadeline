@@ -11,8 +11,6 @@ import com.mojang.logging.LogUtils;
 import com.stevetomadeline.Config;
 import com.stevetomadeline.SteveToMadeline;
 import com.stevetomadeline.client.mode.RenderModeManager;
-import com.stevetomadeline.client.windowx.WindowXCameraBridge;
-import com.xutrain.windowx.camera.CameraRenderManager;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
@@ -63,10 +61,7 @@ public final class CameraRenderHandler {
         if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_SKY) {
             return;
         }
-        if (!WindowXCameraBridge.isActive() || !CameraRenderManager.isRendering()) {
-            return;
-        }
-        if (!WindowXCameraBridge.CAMERA_ID.equals(CameraRenderManager.getCurrentCameraId())) {
+        if (!RenderModeManager.isCameraMode()) {
             return;
         }
         try {
