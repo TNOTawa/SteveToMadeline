@@ -59,6 +59,7 @@
 
 ## Project map
 
+- **Current phase:** P0 技术验证完成（主窗口正交摄像机 + 2D 渲染），P1 待开始；进度与结论见 [docs/DEVLOG.md](docs/DEVLOG.md)
 - **Project:** SteveToMadeline
 - **Purpose:** 在 Minecraft 1.21.1 NeoForge 中以 WindowX 为前置实现 Celeste 风格二维横版移动、平面切换与玛德琳表现
 - **Main entry point:** `src/main/java/...`（NeoForge mod 主类）
