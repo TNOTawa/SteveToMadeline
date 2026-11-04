@@ -110,6 +110,7 @@ public final class CameraRenderHandler {
 
         float halfHeight = (float) Config.ORTHO_HALF_HEIGHT.get().doubleValue();
         float blocksPerPixel = (2.0f * halfHeight) / VIEW_HEIGHT;
+        int tileSize = Math.max(1, Mth.ceil(1.0f / blocksPerPixel));
         int planeBlock = zPlane ? Mth.floor(eye.z) : Mth.floor(eye.x);
 
         float fogStart = (float) Config.FOG_START.get().doubleValue();
@@ -129,7 +130,7 @@ public final class CameraRenderHandler {
         RenderSystem.disableCull();
         try {
             drawBackground();
-            int tiles = drawTiles(level, eye, right, zPlane, planeBlock, blocksPerPixel,
+            int tiles = drawTiles(level, eye, right, zPlane, planeBlock, blocksPerPixel, tileSize,
                     fogStart, fogEnd);
             if (!loggedOnce) {
                 loggedOnce = true;
@@ -162,14 +163,14 @@ public final class CameraRenderHandler {
     }
 
     private static int drawTiles(ClientLevel level, Vec3 eye, Vec3 right, boolean zPlane,
-                                 int planeBlock, float blocksPerPixel, float fogStart, float fogEnd) {
+                                 int planeBlock, float blocksPerPixel, int tileSize,
+                                 float fogStart, float fogEnd) {
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
         RenderSystem.setShader(GameRenderer::getPositionTexColorShader);
         RenderSystem.setShaderTexture(0, TextureAtlas.LOCATION_BLOCKS);
 
         BufferBuilder buffer = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX_COLOR);
-        int tileSize = Math.max(1, Mth.ceil(blocksPerPixel));
         int drawn = 0;
 
         for (int screenY = 0; screenY < VIEW_HEIGHT; screenY += tileSize) {
