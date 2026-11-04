@@ -6,6 +6,7 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
+import net.neoforged.fml.config.ModConfig;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.gui.ConfigurationScreen;
@@ -18,6 +19,7 @@ import net.neoforged.neoforge.common.NeoForge;
 @Mod(value = SteveToMadeline.MODID, dist = Dist.CLIENT)
 public final class SteveToMadelineClient {
     public SteveToMadelineClient(ModContainer container, IEventBus modEventBus) {
+        container.registerConfig(ModConfig.Type.CLIENT, Config.SPEC);
         container.registerExtensionPoint(IConfigScreenFactory.class, ConfigurationScreen::new);
         modEventBus.addListener(SteveToMadelineKeys::register);
         NeoForge.EVENT_BUS.addListener(SteveToMadelineClient::onClientTick);
