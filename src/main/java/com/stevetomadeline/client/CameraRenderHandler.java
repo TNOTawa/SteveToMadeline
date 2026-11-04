@@ -30,6 +30,8 @@ import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import net.neoforged.neoforge.client.model.data.ModelData;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fStack;
+import org.lwjgl.BufferUtils;
+import org.lwjgl.opengl.GL11;
 import org.slf4j.Logger;
 
 /**
@@ -48,9 +50,9 @@ public final class CameraRenderHandler {
     private static final int VIEW_WIDTH = 960;
     private static final int VIEW_HEIGHT = 540;
     private static final float ASPECT = (float) VIEW_WIDTH / VIEW_HEIGHT;
-    private static final float BACKGROUND_R = 0.02f;
-    private static final float BACKGROUND_G = 0.02f;
-    private static final float BACKGROUND_B = 0.03f;
+    private static final float BACKGROUND_R = 0.05f;
+    private static final float BACKGROUND_G = 0.06f;
+    private static final float BACKGROUND_B = 0.10f;
 
     private static boolean loggedOnce;
 
@@ -108,8 +110,13 @@ public final class CameraRenderHandler {
         Vec3 right = new Vec3(-forward.z, 0.0, forward.x);
         boolean zPlane = Math.abs(forward.z) >= Math.abs(forward.x);
 
+        int[] viewport = new int[4];
+        GL11.glGetIntegerv(GL11.GL_VIEWPORT, viewport);
+        int viewWidth = Math.max(1, viewport[2]);
+        int viewHeight = Math.max(1, viewport[3]);
+
         float halfHeight = (float) Config.ORTHO_HALF_HEIGHT.get().doubleValue();
-        float blocksPerPixel = (2.0f * halfHeight) / VIEW_HEIGHT;
+        float blocksPerPixel = (2.0f * halfHeight) / viewHeight;
         int tileSize = Math.max(1, Mth.ceil(1.0f / blocksPerPixel));
         int planeBlock = zPlane ? Mth.floor(eye.z) : Mth.floor(eye.x);
 
@@ -122,19 +129,23 @@ public final class CameraRenderHandler {
         modelView.identity();
         RenderSystem.applyModelViewMatrix();
         RenderSystem.setProjectionMatrix(
-                new Matrix4f().setOrtho(0.0f, VIEW_WIDTH, VIEW_HEIGHT, 0.0f, -1000.0f, 1000.0f),
+                new Matrix4f().setOrtho(0.0f, viewWidth, viewHeight, 0.0f, -1000.0f, 1000.0f),
                 VertexSorting.DISTANCE_TO_ORIGIN);
 
         RenderSystem.disableDepthTest();
         RenderSystem.depthMask(false);
         RenderSystem.disableCull();
         try {
-            drawBackground();
+            drawBackground(viewWidth, viewHeight);
+            drawDebugMarker(viewWidth, viewHeight);
             int tiles = drawTiles(level, eye, right, zPlane, planeBlock, blocksPerPixel, tileSize,
-                    fogStart, fogEnd);
+                    fogStart, fogEnd, viewWidth, viewHeight);
             if (!loggedOnce) {
                 loggedOnce = true;
-                LOG.info("[WindowX] 2D screen-space overlay active: {} tiles, yaw={}", tiles, yaw);
+                LOG.info("[WindowX] 2D overlay: {} tiles, yaw={}, viewport={}x{}, window={}x{}",
+                        tiles, yaw, viewWidth, viewHeight,
+                        Minecraft.getInstance().getWindow().getWidth(),
+                        Minecraft.getInstance().getWindow().getHeight());
             }
         } finally {
             RenderSystem.depthMask(true);
@@ -147,14 +158,26 @@ public final class CameraRenderHandler {
         }
     }
 
-    private static void drawBackground() {
+    private static void drawBackground(int width, int height) {
         RenderSystem.disableBlend();
         RenderSystem.setShader(GameRenderer::getPositionColorShader);
         BufferBuilder buffer = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
         colorVertex(buffer, 0.0f, 0.0f);
-        colorVertex(buffer, 0.0f, VIEW_HEIGHT);
-        colorVertex(buffer, VIEW_WIDTH, VIEW_HEIGHT);
-        colorVertex(buffer, VIEW_WIDTH, 0.0f);
+        colorVertex(buffer, 0.0f, height);
+        colorVertex(buffer, width, height);
+        colorVertex(buffer, width, 0.0f);
+        BufferUploader.drawWithShader(buffer.buildOrThrow());
+    }
+
+    /** 诊断用：若左上角能看到品红方块，说明叠加层确实写进了相机画面。 */
+    private static void drawDebugMarker(int width, int height) {
+        float size = Math.min(width, height) * 0.1f;
+        RenderSystem.setShader(GameRenderer::getPositionColorShader);
+        BufferBuilder buffer = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
+        buffer.addVertex(0.0f, 0.0f, 0.0f).setColor(1.0f, 0.0f, 1.0f, 1.0f);
+        buffer.addVertex(0.0f, size, 0.0f).setColor(1.0f, 0.0f, 1.0f, 1.0f);
+        buffer.addVertex(size, size, 0.0f).setColor(1.0f, 0.0f, 1.0f, 1.0f);
+        buffer.addVertex(size, 0.0f, 0.0f).setColor(1.0f, 0.0f, 1.0f, 1.0f);
         BufferUploader.drawWithShader(buffer.buildOrThrow());
     }
 
@@ -164,7 +187,7 @@ public final class CameraRenderHandler {
 
     private static int drawTiles(ClientLevel level, Vec3 eye, Vec3 right, boolean zPlane,
                                  int planeBlock, float blocksPerPixel, int tileSize,
-                                 float fogStart, float fogEnd) {
+                                 float fogStart, float fogEnd, int width, int height) {
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
         RenderSystem.setShader(GameRenderer::getPositionTexColorShader);
@@ -173,13 +196,13 @@ public final class CameraRenderHandler {
         BufferBuilder buffer = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX_COLOR);
         int drawn = 0;
 
-        for (int screenY = 0; screenY < VIEW_HEIGHT; screenY += tileSize) {
+        for (int screenY = 0; screenY < height; screenY += tileSize) {
             int screenX = 0;
-            while (screenX < VIEW_WIDTH) {
+            while (screenX < width) {
                 float centerX = screenX + tileSize * 0.5f;
                 float centerY = screenY + tileSize * 0.5f;
-                double horizontalOffset = (centerX - VIEW_WIDTH * 0.5f) * blocksPerPixel;
-                double verticalOffset = (VIEW_HEIGHT * 0.5 - centerY) * blocksPerPixel;
+                double horizontalOffset = (centerX - width * 0.5f) * blocksPerPixel;
+                double verticalOffset = (height * 0.5 - centerY) * blocksPerPixel;
 
                 double worldHorizontal = zPlane
                         ? eye.x + right.x * horizontalOffset
