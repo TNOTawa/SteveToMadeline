@@ -30,7 +30,6 @@ import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import net.neoforged.neoforge.client.model.data.ModelData;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fStack;
-import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
 import org.slf4j.Logger;
 
@@ -50,13 +49,9 @@ public final class CameraRenderHandler {
     private static final int VIEW_WIDTH = 960;
     private static final int VIEW_HEIGHT = 540;
     private static final float ASPECT = (float) VIEW_WIDTH / VIEW_HEIGHT;
-    private static final float BACKGROUND_R = 0.05f;
-    private static final float BACKGROUND_G = 0.06f;
-    private static final float BACKGROUND_B = 0.10f;
     /** 屏幕空间正交投影的 z 范围 -1000..1000；写入小于远平面的深度，避免被天空蒙版当成天空。 */
     private static final float Z_BACKGROUND = 500.0f;
     private static final float Z_TILES = 400.0f;
-    private static final float Z_MARKER = 300.0f;
 
     private static boolean loggedOnce;
 
@@ -77,25 +72,11 @@ public final class CameraRenderHandler {
         try {
             if (RenderModeManager.isFlat2D()) {
                 drawFlat2D(event.getPartialTick().getGameTimeDeltaPartialTick(false));
-            } else if (RenderModeManager.isIsometric()) {
-                applyFog();
             }
+            // 2.5D 不施加自定义雾：WindowX 在 renderLevel 前会 setupNoFog()，
+            // 之前强加的 12–64 格雾会把远处地形渐隐成天空色，看起来像被切断。
         } catch (Throwable t) {
             LOG.warn("[WindowX] camera overlay failed", t);
-        }
-    }
-
-    private static void applyFog() {
-        try {
-            double start = Config.FOG_START.get();
-            double end = Config.FOG_END.get();
-            if (end <= start || end <= 0.0) {
-                return;
-            }
-            RenderSystem.setShaderFogStart((float) start);
-            RenderSystem.setShaderFogEnd((float) end);
-        } catch (Throwable ignored) {
-            // 配置未就绪时跳过。
         }
     }
 
@@ -145,8 +126,11 @@ public final class CameraRenderHandler {
         RenderSystem.depthFunc(GL11.GL_ALWAYS);
         RenderSystem.disableCull();
         try {
-            drawBackground(viewWidth, viewHeight);
-            drawDebugMarker(viewWidth, viewHeight);
+            boolean skyVisible = level.canSeeSky(player.blockPosition());
+            float fogR = skyVisible ? 0.62f : 0.03f;
+            float fogG = skyVisible ? 0.74f : 0.03f;
+            float fogB = skyVisible ? 0.92f : 0.04f;
+            drawBackground(viewWidth, viewHeight, fogR, fogG, fogB);
             int tiles = drawTiles(level, eye, right, zPlane, planeBlock, blocksPerPixel, tileSize,
                     fogStart, fogEnd, viewWidth, viewHeight);
             if (!loggedOnce) {
@@ -168,31 +152,19 @@ public final class CameraRenderHandler {
         }
     }
 
-    private static void drawBackground(int width, int height) {
+    private static void drawBackground(int width, int height, float red, float green, float blue) {
         RenderSystem.disableBlend();
         RenderSystem.setShader(GameRenderer::getPositionColorShader);
         BufferBuilder buffer = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
-        colorVertex(buffer, 0.0f, 0.0f);
-        colorVertex(buffer, 0.0f, height);
-        colorVertex(buffer, width, height);
-        colorVertex(buffer, width, 0.0f);
+        colorVertex(buffer, 0.0f, 0.0f, red, green, blue);
+        colorVertex(buffer, 0.0f, height, red, green, blue);
+        colorVertex(buffer, width, height, red, green, blue);
+        colorVertex(buffer, width, 0.0f, red, green, blue);
         BufferUploader.drawWithShader(buffer.buildOrThrow());
     }
 
-    /** 诊断用：若左上角能看到品红方块，说明叠加层确实写进了相机画面。 */
-    private static void drawDebugMarker(int width, int height) {
-        float size = Math.min(width, height) * 0.1f;
-        RenderSystem.setShader(GameRenderer::getPositionColorShader);
-        BufferBuilder buffer = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
-        buffer.addVertex(0.0f, 0.0f, Z_MARKER).setColor(1.0f, 0.0f, 1.0f, 1.0f);
-        buffer.addVertex(0.0f, size, Z_MARKER).setColor(1.0f, 0.0f, 1.0f, 1.0f);
-        buffer.addVertex(size, size, Z_MARKER).setColor(1.0f, 0.0f, 1.0f, 1.0f);
-        buffer.addVertex(size, 0.0f, Z_MARKER).setColor(1.0f, 0.0f, 1.0f, 1.0f);
-        BufferUploader.drawWithShader(buffer.buildOrThrow());
-    }
-
-    private static void colorVertex(BufferBuilder buffer, float x, float y) {
-        buffer.addVertex(x, y, Z_BACKGROUND).setColor(BACKGROUND_R, BACKGROUND_G, BACKGROUND_B, 1.0f);
+    private static void colorVertex(BufferBuilder buffer, float x, float y, float red, float green, float blue) {
+        buffer.addVertex(x, y, Z_BACKGROUND).setColor(red, green, blue, 1.0f);
     }
 
     private static int drawTiles(ClientLevel level, Vec3 eye, Vec3 right, boolean zPlane,
