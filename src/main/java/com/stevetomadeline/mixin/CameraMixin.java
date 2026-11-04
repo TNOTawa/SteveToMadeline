@@ -23,6 +23,9 @@ public abstract class CameraMixin {
     private static RenderModeManager.Mode LAST_LOGGED;
 
     @Shadow
+    private boolean detached;
+
+    @Shadow
     protected abstract void setPosition(Vec3 position);
 
     @Shadow
@@ -42,6 +45,8 @@ public abstract class CameraMixin {
         Vec3 position = CameraController.position(player, partialTick);
         setPosition(position);
         setRotation(CameraController.yaw(player), CameraController.pitch());
+        // 强制第三人称语义，让玩家模型始终参与渲染。
+        this.detached = true;
         if (LAST_LOGGED != RenderModeManager.mode()) {
             LAST_LOGGED = RenderModeManager.mode();
             LOG.info("[STM] camera mixin active: mode={}, pos={}, yaw={}, pitch={}",
