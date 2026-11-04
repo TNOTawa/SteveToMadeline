@@ -3,6 +3,8 @@
   "stevetomadeline.configuration.section.stevetomadeline.common.toml": "SteveToMadeline 配置",
   "stevetomadeline.configuration.section.stevetomadeline.common.toml.title": "SteveToMadeline 配置",
   "stevetomadeline.configuration.celesteModeEnabled": "启用 Celeste 模式",
+  "stevetomadeline.configuration.cameraDistance": "摄像机距离（方块）",
+  "stevetomadeline.configuration.orthoHalfHeight": "正交半高（方块）",
 
   "key.categories.stevetomadeline": "SteveToMadeline",
   "key.stevetomadeline.toggle_celeste_mode": "切换 Celeste 摄像机"

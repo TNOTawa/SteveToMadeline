@@ -28,6 +28,7 @@ public final class SteveToMadelineClient {
         while (SteveToMadelineKeys.TOGGLE_CELESTE_MODE.consumeClick()) {
             WindowXCameraBridge.toggle();
         }
+        WindowXCameraBridge.tick();
     }
 
     private static void onLoggingOut(ClientPlayerNetworkEvent.LoggingOut event) {
