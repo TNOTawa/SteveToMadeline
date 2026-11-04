@@ -12,14 +12,14 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
- * 2D / 2.5D 模式下把主窗口的透视投影替换成正交投影。
- * 正交半高沿用配置 orthoHalfHeight（WindowX 里这个值的语义也是方块半高）。
+ * 2D / 2.5D 的主窗口正交投影：
+ * <ul>
+ *   <li>2D：近裁剪面 = 相机距离 - 切片半厚，只保留玩家所在轴的切片；更远的世界保留为远景层。</li>
+ *   <li>2.5D：常规近平面，正常 3D 世界 + 下俯 12°。</li>
+ * </ul>
  */
 @Mixin(GameRenderer.class)
 public abstract class GameRendererMixin {
-    private static final org.slf4j.Logger LOG = com.mojang.logging.LogUtils.getLogger();
-    private static boolean LOGGED;
-
     @Inject(method = "getProjectionMatrix(D)Lorg/joml/Matrix4f;", at = @At("RETURN"),
             cancellable = true, require = 0)
     private void stevetomadeline$orthographic(double fov, CallbackInfoReturnable<Matrix4f> cir) {
@@ -31,12 +31,12 @@ public abstract class GameRendererMixin {
         float halfHeight = (float) Config.ORTHO_HALF_HEIGHT.get().doubleValue();
         float halfWidth = halfHeight * aspect;
         double distance = Config.CAMERA_DISTANCE.get();
-        float far = (float) Math.max(512.0, distance + 512.0);
-        if (!LOGGED) {
-            LOGGED = true;
-            LOG.info("[STM] ortho projection active: halfHeight={}, aspect={}, far={}, distance={}",
-                    halfHeight, aspect, far, distance);
+        float near = 0.05f;
+        if (RenderModeManager.isFlat2D()) {
+            double slice = Config.SLICE_HALF_THICKNESS.get();
+            near = (float) Math.max(0.05, distance - slice);
         }
-        cir.setReturnValue(new Matrix4f().ortho(-halfWidth, halfWidth, -halfHeight, halfHeight, 0.05f, far));
+        float far = (float) Math.max(512.0, distance + 512.0);
+        cir.setReturnValue(new Matrix4f().ortho(-halfWidth, halfWidth, -halfHeight, halfHeight, near, far));
     }
 }

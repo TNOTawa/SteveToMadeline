@@ -20,7 +20,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(Camera.class)
 public abstract class CameraMixin {
     private static final org.slf4j.Logger LOG = com.mojang.logging.LogUtils.getLogger();
-    private static boolean LOGGED;
+    private static RenderModeManager.Mode LAST_LOGGED;
 
     @Shadow
     protected abstract void setPosition(Vec3 position);
@@ -42,8 +42,8 @@ public abstract class CameraMixin {
         Vec3 position = CameraController.position(player, partialTick);
         setPosition(position);
         setRotation(CameraController.yaw(player), CameraController.pitch());
-        if (!LOGGED) {
-            LOGGED = true;
+        if (LAST_LOGGED != RenderModeManager.mode()) {
+            LAST_LOGGED = RenderModeManager.mode();
             LOG.info("[STM] camera mixin active: mode={}, pos={}, yaw={}, pitch={}",
                     RenderModeManager.mode(), position, CameraController.yaw(player), CameraController.pitch());
         }
