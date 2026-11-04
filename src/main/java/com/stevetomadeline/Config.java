@@ -30,11 +30,11 @@ public final class Config {
 
     public static final ModConfigSpec.DoubleValue FOG_START = BUILDER
             .comment("雾开始距离（方块）。")
-            .defineInRange("fogStart", 12.0, 0.0, 256.0);
+            .defineInRange("fogStart", 96.0, 0.0, 512.0);
 
     public static final ModConfigSpec.DoubleValue FOG_END = BUILDER
             .comment("雾完全遮蔽距离（方块）。小于等于开始距离时不做雾处理。")
-            .defineInRange("fogEnd", 64.0, 4.0, 512.0);
+            .defineInRange("fogEnd", 448.0, 16.0, 512.0);
 
     static final ModConfigSpec SPEC = BUILDER.build();
 

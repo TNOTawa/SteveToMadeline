@@ -202,6 +202,21 @@ public final class CameraRenderHandler {
         }
     }
 
+    /** 摄像机模式下放宽雾距离，让远处地形仍然可见；滑块可调。 */
+    @SubscribeEvent
+    public static void onRenderFog(ViewportEvent.RenderFog event) {
+        if (!RenderModeManager.isCameraMode()) {
+            return;
+        }
+        float start = (float) Config.FOG_START.get().doubleValue();
+        float end = (float) Config.FOG_END.get().doubleValue();
+        if (end <= start + 1.0f) {
+            return;
+        }
+        event.setNearPlaneDistance(start);
+        event.setFarPlaneDistance(end);
+    }
+
     /** 摄像机模式下固定雾色为当前天空色，避免入水/岩浆时天空盒突变。 */
     @SubscribeEvent
     public static void onFogColor(ViewportEvent.ComputeFogColor event) {
