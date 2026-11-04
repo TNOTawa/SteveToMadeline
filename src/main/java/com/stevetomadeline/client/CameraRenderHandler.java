@@ -32,22 +32,16 @@ import org.lwjgl.opengl.GL11;
 import org.slf4j.Logger;
 
 /**
- * 2D / 2.5D 的附加渲染层。
+ * 2D 模式的方块切片层。
  *
- * <p>2D 的方块切片直接在屏幕空间绘制：临时换成像素正交投影，按 960x540 的相机纹理
- * 逐格铺方块正面贴图。这样不依赖世界坐标/视锥/摄像机朝向，四个方向表现一致，
- * 也不会再被切片近远平面裁掉。
- *
- * <p>2.5D 只补深度雾，世界本身交给原版渲染。
+ * <p>在屏幕空间的正交投影里，按世界方块坐标计算每格的屏幕位置（含小数偏移），
+ * 因此摄像机移动时整幅贴图会连续滚动，而不是一格一跳。
+ * 近处方块完全不透明，只有远处逐渐淡入背景雾色。
  */
 @EventBusSubscriber(modid = SteveToMadeline.MODID, value = Dist.CLIENT)
 public final class CameraRenderHandler {
     private static final Logger LOG = LogUtils.getLogger();
 
-    private static final int VIEW_WIDTH = 960;
-    private static final int VIEW_HEIGHT = 540;
-    private static final float ASPECT = (float) VIEW_WIDTH / VIEW_HEIGHT;
-    /** 屏幕空间正交投影的 z 范围 -1000..1000；写入小于远平面的深度，避免被天空蒙版当成天空。 */
     private static final float Z_BACKGROUND = 500.0f;
     private static final float Z_TILES = 400.0f;
 
@@ -68,8 +62,6 @@ public final class CameraRenderHandler {
             if (RenderModeManager.isFlat2D()) {
                 drawFlat2D(event.getPartialTick().getGameTimeDeltaPartialTick(false));
             }
-            // 2.5D 不施加自定义雾：WindowX 在 renderLevel 前会 setupNoFog()，
-            // 之前强加的 12–64 格雾会把远处地形渐隐成天空色，看起来像被切断。
         } catch (Throwable t) {
             LOG.warn("[WindowX] camera overlay failed", t);
         }
@@ -84,7 +76,7 @@ public final class CameraRenderHandler {
         }
 
         Vec3 eye = player.getEyePosition(partialTick);
-        float yaw = Math.round(player.getYRot() / 90.0f) * 90.0f;
+        float yaw = CameraController.yaw(player);
         double radians = Math.toRadians(yaw);
         Vec3 forward = new Vec3(-Math.sin(radians), 0.0, Math.cos(radians));
         Vec3 right = new Vec3(-forward.z, 0.0, forward.x);
@@ -96,8 +88,7 @@ public final class CameraRenderHandler {
         int viewHeight = Math.max(1, viewport[3]);
 
         float halfHeight = (float) Config.ORTHO_HALF_HEIGHT.get().doubleValue();
-        float blocksPerPixel = (2.0f * halfHeight) / viewHeight;
-        int tileSize = Math.max(1, Mth.ceil(1.0f / blocksPerPixel));
+        float pixelsPerBlock = viewHeight / (2.0f * halfHeight);
         int planeBlock = zPlane ? Mth.floor(eye.z) : Mth.floor(eye.x);
 
         float fogStart = (float) Config.FOG_START.get().doubleValue();
@@ -112,9 +103,6 @@ public final class CameraRenderHandler {
                 new Matrix4f().setOrtho(0.0f, viewWidth, viewHeight, 0.0f, -1000.0f, 1000.0f),
                 VertexSorting.DISTANCE_TO_ORIGIN);
 
-        // 必须写深度：WindowX 的 CameraSkyMask 会用深度纹理把“天空”像素清成透明。
-        // 但深度缓冲的清除值与比较方向由 WindowX/管线决定，这里用 ALWAYS 保证每一层都落笔，
-        // 同时把深度写进去（叠加层彼此用绘制顺序覆盖）。
         int previousDepthFunc = GL11.glGetInteger(GL11.GL_DEPTH_FUNC);
         RenderSystem.enableDepthTest();
         RenderSystem.depthMask(true);
@@ -126,14 +114,11 @@ public final class CameraRenderHandler {
             float fogG = skyVisible ? 0.74f : 0.03f;
             float fogB = skyVisible ? 0.92f : 0.04f;
             drawBackground(viewWidth, viewHeight, fogR, fogG, fogB);
-            int tiles = drawTiles(level, eye, right, zPlane, planeBlock, blocksPerPixel, tileSize,
+            int tiles = drawTiles(level, eye, right, zPlane, planeBlock, pixelsPerBlock,
                     fogStart, fogEnd, viewWidth, viewHeight);
             if (!loggedOnce) {
                 loggedOnce = true;
-                LOG.info("[WindowX] 2D overlay: {} tiles, yaw={}, viewport={}x{}, window={}x{}",
-                        tiles, yaw, viewWidth, viewHeight,
-                        Minecraft.getInstance().getWindow().getWidth(),
-                        Minecraft.getInstance().getWindow().getHeight());
+                LOG.info("[STM] 2D overlay: {} tiles, yaw={}, viewport={}x{}", tiles, yaw, viewWidth, viewHeight);
             }
         } finally {
             RenderSystem.depthFunc(previousDepthFunc);
@@ -163,8 +148,16 @@ public final class CameraRenderHandler {
     }
 
     private static int drawTiles(ClientLevel level, Vec3 eye, Vec3 right, boolean zPlane,
-                                 int planeBlock, float blocksPerPixel, int tileSize,
-                                 float fogStart, float fogEnd, int width, int height) {
+                                 int planeBlock, float pixelsPerBlock, float fogStart, float fogEnd,
+                                 int width, int height) {
+        double eyeHorizontal = zPlane ? eye.x : eye.z;
+        double rightSign = zPlane ? right.x : right.z;
+        int centerHorizontal = Mth.floor(eyeHorizontal);
+        int centerVertical = Mth.floor(eye.y);
+        int radiusX = Mth.ceil(width * 0.5f / pixelsPerBlock) + 2;
+        int radiusY = Mth.ceil(height * 0.5f / pixelsPerBlock) + 2;
+        float half = pixelsPerBlock * 0.5f;
+
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
         RenderSystem.setShader(GameRenderer::getPositionTexColorShader);
@@ -173,26 +166,27 @@ public final class CameraRenderHandler {
         BufferBuilder buffer = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX_COLOR);
         int drawn = 0;
 
-        for (int screenY = 0; screenY < height; screenY += tileSize) {
-            int screenX = 0;
-            while (screenX < width) {
-                float centerX = screenX + tileSize * 0.5f;
-                float centerY = screenY + tileSize * 0.5f;
-                double horizontalOffset = (centerX - width * 0.5f) * blocksPerPixel;
-                double verticalOffset = (height * 0.5 - centerY) * blocksPerPixel;
-
-                double worldHorizontal = zPlane
-                        ? eye.x + right.x * horizontalOffset
-                        : eye.z + right.z * horizontalOffset;
-                double worldVertical = eye.y + verticalOffset;
-
-                int horizontalBlock = Mth.floor(worldHorizontal);
-                int verticalBlock = Mth.floor(worldVertical);
+        for (int dx = -radiusX; dx <= radiusX; dx++) {
+            int horizontal = centerHorizontal + dx;
+            double horizontalWorld = horizontal + 0.5;
+            float screenX = width * 0.5f
+                    + (float) ((horizontalWorld - eyeHorizontal) * rightSign * pixelsPerBlock);
+            if (screenX < -pixelsPerBlock || screenX > width + pixelsPerBlock) {
+                continue;
+            }
+            BlockPos columnPos = zPlane
+                    ? new BlockPos(horizontal, 0, planeBlock)
+                    : new BlockPos(planeBlock, 0, horizontal);
+            for (int dy = -radiusY; dy <= radiusY; dy++) {
+                int vertical = centerVertical + dy;
+                float screenY = height * 0.5f
+                        - (float) ((vertical + 0.5 - eye.y) * pixelsPerBlock);
+                if (screenY < -pixelsPerBlock || screenY > height + pixelsPerBlock) {
+                    continue;
+                }
                 BlockPos pos = zPlane
-                        ? new BlockPos(horizontalBlock, verticalBlock, planeBlock)
-                        : new BlockPos(planeBlock, verticalBlock, horizontalBlock);
-
-                screenX += tileSize;
+                        ? new BlockPos(horizontal, vertical, planeBlock)
+                        : new BlockPos(planeBlock, vertical, horizontal);
                 BlockState state = level.getBlockState(pos);
                 if (state.isAir()) {
                     continue;
@@ -202,28 +196,28 @@ public final class CameraRenderHandler {
                 if (sprite == null) {
                     continue;
                 }
-
-                float distance = (float) Math.sqrt(horizontalOffset * horizontalOffset + verticalOffset * verticalOffset);
+                double distance = Math.sqrt(
+                        (horizontalWorld - eyeHorizontal) * (horizontalWorld - eyeHorizontal)
+                                + (vertical + 0.5 - eye.y) * (vertical + 0.5 - eye.y));
                 float fog = fogEnd > fogStart
-                        ? Mth.clamp((distance - fogStart) / (fogEnd - fogStart), 0.0f, 1.0f)
+                        ? Mth.clamp((float) ((distance - fogStart) / (fogEnd - fogStart)), 0.0f, 1.0f)
                         : 0.0f;
-                float alpha = 0.5f * (1.0f - fog);
+                float alpha = 1.0f - fog;
                 if (alpha <= 0.01f) {
                     continue;
                 }
 
                 float light = Mth.clamp(level.getMaxLocalRawBrightness(pos) / 15.0f, 0.0f, 1.0f);
                 float bright = 0.18f + 0.82f * light;
-
                 int tint = Minecraft.getInstance().getBlockColors().getColor(state, level, pos, 0);
                 float red = ((tint >> 16) & 0xFF) / 255.0f * bright;
                 float green = ((tint >> 8) & 0xFF) / 255.0f * bright;
                 float blue = (tint & 0xFF) / 255.0f * bright;
 
-                float x0 = screenX - tileSize;
-                float x1 = screenX;
-                float y0 = screenY;
-                float y1 = screenY + tileSize;
+                float x0 = screenX - half;
+                float x1 = screenX + half;
+                float y0 = screenY - half;
+                float y1 = screenY + half;
 
                 tileVertex(buffer, x0, y1, sprite.getU0(), sprite.getV1(), red, green, blue, alpha);
                 tileVertex(buffer, x0, y0, sprite.getU0(), sprite.getV0(), red, green, blue, alpha);

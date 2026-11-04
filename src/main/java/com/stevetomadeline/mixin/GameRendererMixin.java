@@ -17,6 +17,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  */
 @Mixin(GameRenderer.class)
 public abstract class GameRendererMixin {
+    private static final org.slf4j.Logger LOG = com.mojang.logging.LogUtils.getLogger();
+    private static boolean LOGGED;
+
     @Inject(method = "getProjectionMatrix(D)Lorg/joml/Matrix4f;", at = @At("RETURN"),
             cancellable = true, require = 0)
     private void stevetomadeline$orthographic(double fov, CallbackInfoReturnable<Matrix4f> cir) {
@@ -29,6 +32,11 @@ public abstract class GameRendererMixin {
         float halfWidth = halfHeight * aspect;
         double distance = Config.CAMERA_DISTANCE.get();
         float far = (float) Math.max(512.0, distance + 512.0);
+        if (!LOGGED) {
+            LOGGED = true;
+            LOG.info("[STM] ortho projection active: halfHeight={}, aspect={}, far={}, distance={}",
+                    halfHeight, aspect, far, distance);
+        }
         cir.setReturnValue(new Matrix4f().ortho(-halfWidth, halfWidth, -halfHeight, halfHeight, 0.05f, far));
     }
 }
