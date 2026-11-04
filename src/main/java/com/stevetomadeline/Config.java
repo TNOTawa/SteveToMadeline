@@ -26,7 +26,7 @@ public final class Config {
 
     public static final ModConfigSpec.DoubleValue PARALLAX_STRENGTH = BUILDER
             .comment("正交伪视差强度：前景层随移动速度产生的横向超前量。0 = 关闭。")
-            .defineInRange("parallaxStrength", 2.0, 0.0, 8.0);
+            .defineInRange("parallaxStrength", 0.0, 0.0, 8.0);
 
     public static final ModConfigSpec.BooleanValue ENABLE_ISOMETRIC = BUILDER
             .comment("启用 2.5D 模式（彩蛋）。关闭时 R 只在原版与 2D 之间切换。")
