@@ -2,6 +2,7 @@ package com.stevetomadeline.client.windowx;
 
 import com.mojang.logging.LogUtils;
 import com.stevetomadeline.Config;
+import com.stevetomadeline.client.mode.RenderModeManager;
 import com.xutrain.windowx.api.WindowXClientApi;
 import com.xutrain.windowx.api.window.CameraOptions;
 import com.xutrain.windowx.api.window.CameraProjection;
@@ -12,22 +13,19 @@ import com.xutrain.windowx.api.window.WindowOptions;
 import com.xutrain.windowx.camera.CameraRegistry;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
-import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Quaternionf;
 import org.slf4j.Logger;
 
 /**
- * P0 技术验证：用 WindowX 公开 API 建一个跟随玩家的正交侧视摄像机窗口。
+ * 用 WindowX 公开 API 建一个跟随玩家的正交摄像机窗口，供 2D / 2.5D 两种模式共用。
  *
  * <p>WindowX 在 ORTHOGRAPHIC 模式下把 {@link CameraOptions#fov()} 直接当作正交半高
- * （见 CameraRenderManager 里的 {@code Matrix4f.ortho}），单位是方块，而不是角度。
- * 因此“远近”由配置项的 orthoHalfHeight 控制，而不是摄像机距离。
+ * （见 CameraRenderManager 里的 {@code Matrix4f.ortho}），单位是方块而非角度。
  *
- * <p>摄像机保持固定距离，不再因墙面向玩家收缩；挡在前面的几何体由
- * {@code CameraRenderManagerMixin} 抬高近裁剪面切掉（见 foregroundCut）。
+ * <p>2D 模式：相机与玩家等高、pitch=0，由 mixin 把近/远裁剪面收成一层切片；
+ * 2.5D 模式：相机抬高并下俯 12°，能看到方块顶面，但仍是横版侧视。
  */
 public final class WindowXCameraBridge {
     private static final Logger LOG = LogUtils.getLogger();
@@ -41,7 +39,6 @@ public final class WindowXCameraBridge {
     private static final float RENDER_DISTANCE = 32.0f;
 
     private static ClientWindow window;
-    private static CameraRegistry.Pose lastPose;
     private static boolean active;
     private static float appliedHalfHeight = Float.NaN;
 
@@ -52,21 +49,12 @@ public final class WindowXCameraBridge {
         return active;
     }
 
-    public static void toggle() {
-        if (active) {
-            stop();
-        } else {
-            start();
-        }
-    }
-
     public static void start() {
         if (active) {
             return;
         }
         if (!WindowXClientApi.isAvailable()) {
             LOG.warn("[WindowX] API unavailable - is WindowX installed?");
-            notifyPlayer("WindowX 未加载，无法启动侧视摄像机");
             return;
         }
         try {
@@ -84,11 +72,9 @@ public final class WindowXCameraBridge {
             applyCameraOptions(currentHalfHeight());
 
             active = true;
-            LOG.info("[WindowX] orthographic camera started (id={}, halfHeight={})", CAMERA_ID, appliedHalfHeight);
-            notifyPlayer("侧视摄像机已启动（R 退出）");
+            LOG.info("[WindowX] camera started (id={}, mode={})", CAMERA_ID, RenderModeManager.mode());
         } catch (Throwable t) {
             LOG.error("[WindowX] failed to start camera", t);
-            notifyPlayer("侧视摄像机启动失败，详见日志");
             stop();
         }
     }
@@ -110,7 +96,6 @@ public final class WindowXCameraBridge {
     }
 
     public static void stop() {
-        boolean wasActive = active || window != null;
         active = false;
         appliedHalfHeight = Float.NaN;
         if (window != null) {
@@ -126,10 +111,6 @@ public final class WindowXCameraBridge {
         } catch (Throwable t) {
             LOG.warn("[WindowX] failed to unregister camera", t);
         }
-        if (wasActive) {
-            LOG.info("[WindowX] orthographic camera stopped");
-            notifyPlayer("已退出侧视摄像机");
-        }
     }
 
     private static void applyCameraOptions(float halfHeight) {
@@ -141,26 +122,6 @@ public final class WindowXCameraBridge {
         appliedHalfHeight = halfHeight;
     }
 
-    /** 最近一帧摄像机姿态，供渲染附加层（雾、背景板）读取。 */
-    public static CameraRegistry.Pose lastPose() {
-        return lastPose;
-    }
-
-    /** 摄像机当前是否嵌在实体方块里；是则返回该方块，用于绘制裁切背景。 */
-    public static BlockState embeddedBlockState() {
-        Minecraft mc = Minecraft.getInstance();
-        CameraRegistry.Pose pose = lastPose;
-        if (pose == null || mc.level == null) {
-            return null;
-        }
-        BlockPos pos = BlockPos.containing(pose.position());
-        BlockState state = mc.level.getBlockState(pos);
-        if (state.isAir() || !state.canOcclude()) {
-            return null;
-        }
-        return state;
-    }
-
     private static float currentHalfHeight() {
         return (float) Config.ORTHO_HALF_HEIGHT.get().doubleValue();
     }
@@ -169,30 +130,30 @@ public final class WindowXCameraBridge {
         return Config.CAMERA_DISTANCE.get();
     }
 
-    /** WindowX 每帧调用；返回 null 时窗口会黑屏，因此保留上一帧姿态兜底。 */
+    /** WindowX 每帧调用。 */
     private static CameraRegistry.Pose locate(float partialTick) {
         Minecraft mc = Minecraft.getInstance();
         LocalPlayer player = mc.player;
         if (player == null || mc.level == null) {
-            return lastPose;
+            return null;
         }
 
-        // 吸附到最近的 90°：P0 只验证四个正交侧视方向，不做连续旋转。
+        // 侧视方向吸附到最近的 90°。
         float yaw = Math.round(player.getYRot() / 90.0f) * 90.0f;
+
+        float pitch = 0.0f;
+        double upOffset = 0.0;
+        if (RenderModeManager.isIsometric()) {
+            // 下俯 12°，同时把相机抬高 tan(12°)*distance，让玩家仍在画面中心。
+            pitch = 12.0f;
+            upOffset = Math.tan(Math.toRadians(pitch)) * currentDistance();
+        }
 
         Vec3 eye = player.getEyePosition(partialTick);
         double lookX = -Math.sin(Math.toRadians(yaw));
         double lookZ = Math.cos(Math.toRadians(yaw));
-        Vec3 pos = eye.add(-lookX * currentDistance(), 0.0, -lookZ * currentDistance());
+        Vec3 pos = eye.add(-lookX * currentDistance(), upOffset, -lookZ * currentDistance());
 
-        lastPose = new CameraRegistry.Pose(pos, yaw, 0.0f, new Quaternionf());
-        return lastPose;
-    }
-
-    private static void notifyPlayer(String message) {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.player != null) {
-            mc.player.displayClientMessage(Component.literal(message), true);
-        }
+        return new CameraRegistry.Pose(pos, yaw, pitch, new Quaternionf());
     }
 }

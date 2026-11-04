@@ -13,19 +13,19 @@ public final class Config {
             .define("celesteModeEnabled", true);
 
     public static final ModConfigSpec.DoubleValue CAMERA_DISTANCE = BUILDER
-            .comment("侧视摄像机与眼睛的水平距离（方块）。正交投影下它不改变缩放，只决定相机站位与近处裁剪。")
+            .comment("侧视摄像机与眼睛的水平距离（方块）。正交投影下它不改变缩放，只决定相机站位与切片范围。")
             .defineInRange("cameraDistance", 8.0, 0.5, 12.0);
 
     public static final ModConfigSpec.DoubleValue ORTHO_HALF_HEIGHT = BUILDER
             .comment("正交视图的半高（方块，屏幕上垂直方向可见世界高度的一半）。数值越小画面越近。")
             .defineInRange("orthoHalfHeight", 10.0, 2.0, 30.0);
 
-    public static final ModConfigSpec.DoubleValue FOREGROUND_CUT = BUILDER
-            .comment("前景切片距离（方块）：相机到该距离内的所有几何体都不绘制，用来让挡在镜头与玩家之间的墙透明。0 表示关闭。")
-            .defineInRange("foregroundCut", 6.0, 0.0, 12.0);
+    public static final ModConfigSpec.DoubleValue SLICE_HALF_THICKNESS = BUILDER
+            .comment("2D 模式的切片半厚度（方块）：只渲染玩家所在轴前后各该距离内的方块与实体。")
+            .defineInRange("sliceHalfThickness", 1.0, 0.25, 2.5);
 
     public static final ModConfigSpec.DoubleValue FOG_START = BUILDER
-            .comment("雾开始距离（方块）。用于把远处背景和近处前景区分开。")
+            .comment("雾开始距离（方块）。")
             .defineInRange("fogStart", 12.0, 0.0, 256.0);
 
     public static final ModConfigSpec.DoubleValue FOG_END = BUILDER

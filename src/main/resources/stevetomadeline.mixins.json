@@ -4,7 +4,8 @@
   "package": "com.stevetomadeline.mixin",
   "compatibilityLevel": "JAVA_21",
   "client": [
-    "CameraRenderManagerMixin"
+    "CameraRenderManagerMixin",
+    "LevelRendererMixin"
   ],
   "injectors": {
     "defaultRequire": 0

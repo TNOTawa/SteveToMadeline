@@ -1,6 +1,7 @@
 package com.stevetomadeline;
 
 import com.stevetomadeline.client.SteveToMadelineKeys;
+import com.stevetomadeline.client.mode.RenderModeManager;
 import com.stevetomadeline.client.windowx.WindowXCameraBridge;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
@@ -28,12 +29,13 @@ public final class SteveToMadelineClient {
 
     private static void onClientTick(ClientTickEvent.Post event) {
         while (SteveToMadelineKeys.TOGGLE_CELESTE_MODE.consumeClick()) {
-            WindowXCameraBridge.toggle();
+            RenderModeManager.cycle();
         }
         WindowXCameraBridge.tick();
     }
 
     private static void onLoggingOut(ClientPlayerNetworkEvent.LoggingOut event) {
         WindowXCameraBridge.stop();
+        RenderModeManager.reset();
     }
 }
