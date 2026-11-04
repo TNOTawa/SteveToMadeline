@@ -75,6 +75,7 @@ public final class CameraRenderHandler {
         float yaw = CameraController.yaw(player);
         double radians = Math.toRadians(yaw);
         Vec3 forward = new Vec3(-Math.sin(radians), 0.0, Math.cos(radians));
+        Vec3 right = new Vec3(-forward.z, 0.0, forward.x);
         boolean zPlane = Math.abs(forward.z) >= Math.abs(forward.x);
         Direction face = zPlane
                 ? (forward.z > 0 ? Direction.NORTH : Direction.SOUTH)
@@ -83,6 +84,9 @@ public final class CameraRenderHandler {
         // 切片平面：玩家所在轴，略微朝远处偏移，避免与玩家自身深度打架。
         double slice = Config.SLICE_HALF_THICKNESS.get();
         double planeOffset = slice * 0.5;
+        // 正交伪视差：前景层按移动速度做一个极小的横向超前，背景保持原速。
+        Vec3 velocity = player.getDeltaMovement();
+        double parallax = velocity.dot(new Vec3(right.x, 0.0, right.z)) * Config.PARALLAX_STRENGTH.get();
         double planeCoordinate = zPlane
                 ? eye.z + forward.z * planeOffset
                 : eye.x + forward.x * planeOffset;
@@ -127,19 +131,19 @@ public final class CameraRenderHandler {
                 float green = ((tint >> 8) & 0xFF) / 255.0f * bright;
                 float blue = (tint & 0xFF) / 255.0f * bright;
 
-                double x0 = horizontal - camera.x;
+                double x0 = horizontal - camera.x + right.x * parallax;
                 double x1 = x0 + 1.0;
                 double y0 = vertical - camera.y;
                 double y1 = y0 + 1.0;
                 if (zPlane) {
-                    double z = planeCoordinate - camera.z;
+                    double z = planeCoordinate - camera.z + right.z * parallax;
                     tileVertex(buffer, x0, y0, z, sprite.getU0(), sprite.getV1(), red, green, blue);
                     tileVertex(buffer, x0, y1, z, sprite.getU0(), sprite.getV0(), red, green, blue);
                     tileVertex(buffer, x1, y1, z, sprite.getU1(), sprite.getV0(), red, green, blue);
                     tileVertex(buffer, x1, y0, z, sprite.getU1(), sprite.getV1(), red, green, blue);
                 } else {
-                    double x = planeCoordinate - camera.x;
-                    double z0 = horizontal - camera.z;
+                    double x = planeCoordinate - camera.x + right.x * parallax;
+                    double z0 = horizontal - camera.z + right.z * parallax;
                     double z1 = z0 + 1.0;
                     tileVertex(buffer, x, y0, z0, sprite.getU0(), sprite.getV1(), red, green, blue);
                     tileVertex(buffer, x, y1, z0, sprite.getU0(), sprite.getV0(), red, green, blue);

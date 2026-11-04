@@ -24,6 +24,14 @@ public final class Config {
             .comment("2D 模式的切片半厚度（方块）：只渲染玩家所在轴前后各该距离内的方块与实体。")
             .defineInRange("sliceHalfThickness", 1.0, 0.25, 2.5);
 
+    public static final ModConfigSpec.DoubleValue PARALLAX_STRENGTH = BUILDER
+            .comment("正交伪视差强度：前景层随移动速度产生的横向超前量。0 = 关闭。")
+            .defineInRange("parallaxStrength", 2.0, 0.0, 8.0);
+
+    public static final ModConfigSpec.BooleanValue ENABLE_ISOMETRIC = BUILDER
+            .comment("启用 2.5D 模式（彩蛋）。关闭时 R 只在原版与 2D 之间切换。")
+            .define("enableIsometric", false);
+
     public static final ModConfigSpec.DoubleValue CAMERA_FOV = BUILDER
             .comment("摄像机视野角（度）。0 = 严格正交；20-45 之间是轻微透视，会有前后景视差。")
             .defineInRange("cameraFov", 0.0, 0.0, 110.0);

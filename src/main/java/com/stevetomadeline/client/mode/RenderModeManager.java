@@ -52,9 +52,10 @@ public final class RenderModeManager {
     }
 
     public static void cycle() {
+        boolean isometric = com.stevetomadeline.Config.ENABLE_ISOMETRIC.get();
         switch (mode) {
             case VANILLA -> switchTo(Mode.FLAT_2D);
-            case FLAT_2D -> switchTo(Mode.ISOMETRIC);
+            case FLAT_2D -> switchTo(isometric ? Mode.ISOMETRIC : Mode.VANILLA);
             case ISOMETRIC -> switchTo(Mode.VANILLA);
         }
     }

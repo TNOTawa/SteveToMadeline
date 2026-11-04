@@ -6,6 +6,8 @@
   "stevetomadeline.configuration.cameraDistance": "摄像机距离（方块）",
   "stevetomadeline.configuration.orthoHalfHeight": "正交半高（方块）",
   "stevetomadeline.configuration.sliceHalfThickness": "2D 切片半厚度（方块）",
+  "stevetomadeline.configuration.parallaxStrength": "正交伪视差强度",
+  "stevetomadeline.configuration.enableIsometric": "启用 2.5D 彩蛋",
   "stevetomadeline.configuration.cameraFov": "摄像机视野角（0 为正交）",
   "stevetomadeline.configuration.fogStart": "雾开始距离（方块）",
   "stevetomadeline.configuration.fogEnd": "雾结束距离（方块）",
