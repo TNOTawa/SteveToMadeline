@@ -1,0 +1,256 @@
+我建议将项目暂定名为 SteveToMadeline。开发路线采用“先验证 WindowX 摄像机 → 实现二维平面切换 → 移植 Celeste 物理 → 加载玛德琳资源 → 适配社区 MOD → 完善联机”的顺序。
+
+下面是一份可以直接用作项目开发文档和 GitHub Milestones 的初版计划。
+
+# SteveToMadeline 开发实施计划 v0.1
+
+**项目定位：** 基于 Minecraft 1.21.1 NeoForge，以 WindowX 为前置 MOD，在 Minecraft 原生世界中实现 Celeste 风格的二维横版平台移动、玛德琳角色表现和可切换运动平面。
+
+**核心原则：** Minecraft 负责世界、方块、实体与碰撞；Celeste 提供运动机制和角色视觉参考；WindowX 负责横版摄像机与窗口渲染；精选 Everest 社区 MOD 采用功能级、数据格式级兼容，不实现完整 Everest 运行时。
+
+## 1. 技术环境
+
+| 项目        | 选定方案                                           |
+| --------- | ---------------------------------------------- |
+| Minecraft | Java Edition 1.21.1                            |
+| MOD 加载器   | NeoForge 21.1.234+                             |
+| Java      | JDK 21                                         |
+| 核心前置      | WindowX 2.2.0 Beta2（用户提供）                      |
+| 开发语言      | Java                                           |
+| 构建工具      | Gradle / NeoForge MDK                          |
+| 初始测试平台    | Windows，单人世界                                   |
+| 参考项目      | Celeste、CeleMod、desk-madeline                  |
+| 后续适配      | Motion Smoothing、Foxeline、Skin Mod Helper Plus |
+
+注意：提供的 WindowX JAR 内部声明版本为 `1.0.16-desktop-interaction.20`，而文件名为 `2.2.0-Beta2`；公开 API 版本为 `1.0.0`。开发阶段锁定这份 JAR 的哈希与 API 签名，避免误用其他构建。
+
+## 2. 功能范围与交互规则
+
+### 2.1 R 键：进入和退出 Celeste 模式
+
+进入时执行：
+
+1. 判断玩家当前水平视线更接近 X 轴还是 Z 轴的正负方向。
+2. 将其吸附到最近的四个正交朝向之一。
+3. 记录玩家当前位置作为二维运动平面的锚点。
+4. 锁定摄像机法线方向的坐标。
+5. 切换为 Celeste 操作输入和运动状态机。
+6. 启用 WindowX 侧视正交摄像机，并将玩家显示为玛德琳。
+
+退出时恢复 Minecraft 原本的摄像机、移动控制和角色渲染。玩家位置不重置，不生成新的玩家实体。
+
+### 2.2 Tab 键：围绕玩家旋转 90°
+
+需要特别明确朝向轴与运动轴的关系：
+
+| 摄像机朝向 | 锁定坐标 | 可移动平面 |
+| ----- | ---- | ----- |
+| +Z（南） | Z    | XY    |
+| -Z（北） | Z    | XY    |
+| +X（东） | X    | ZY    |
+| -X（西） | X    | ZY    |
+
+按下 Tab 后，朝向顺时针旋转 90°，以玩家当前真实位置重新建立运动平面，摄像机同步转向。
+
+例如，朝南时可以沿 X 轴横向移动；转向朝西后，改为沿 Z 轴横向移动。如此反复切换，即可逐步探索 Minecraft 三维世界。
+
+**特殊动作处理：** 冲刺、攀爬等不可安全中断的状态中，先缓存转向请求，在状态结束时旋转。允许空中转向时，应同步变换水平运动速度，并检查新平面的碰撞合法性。
+
+### 2.3 MVP 玩法范围
+
+第一版包含：跑动、普通跳跃、可变跳跃、土狼时间、跳跃缓冲、八方向冲刺、冲刺恢复、墙跳、贴墙滑行、抓墙与体力系统。
+
+暂不包含：完整 Celeste 地图机关、剧情、所有高级移动技巧、Everest C# 模组运行时和 Celeste/Minecraft 双游戏画面合成。
+
+## 3. 开发阶段与验收标准
+
+| 阶段            | 开发内容                                           | 完成标准                             |
+| ------------- | ---------------------------------------------- | -------------------------------- |
+| P0：技术验证       | NeoForge 工程、WindowX 接口、正交摄像机、主窗口接管可行性          | 能在真实 Minecraft 世界中稳定显示可跟随玩家的横版画面 |
+| P1：二维基础       | R/Tab 控制、四方向状态机、坐标锁定、摄像机旋转                     | 可以横向行走、转向、回到原版模式，不发生坐标跳变         |
+| P2：Celeste 物理 | 独立 60Hz 固定步长状态机、跳跃、冲刺、墙跳、攀爬                    | 基础移动可操作，碰撞稳定，物理测试可重复通过           |
+| P3：玛德琳表现      | 本地 Celeste 检测、图集读取、动画、头发、替换玩家显示                | 玩家能够以玛德琳形象运行、跳跃、冲刺和攀爬            |
+| P4：键位同步       | 参考 CeleMod，读取 Celeste 设置并映射到 NeoForge 输入层      | 修改 Celeste 键位后可同步，支持冲突处理与手动覆盖    |
+| P5：社区 MOD 兼容  | Motion Smoothing、Skin Mod Helper Plus、Foxeline | 选定的视觉、皮肤和配置功能通过单独兼容测试            |
+| P6：稳定与发布      | 客户端预测、服务端同步、前景遮挡、异常退出与性能优化                     | 单机稳定，联机基础测试通过，完成安装和许可说明          |
+
+**优先级：P0 → P1 → P2 → P3 → P4 → P5 → P6。**
+
+P0 是必须先通过的技术关卡。不能在主摄像机与 WindowX 之间建立可靠的接管方式，就不应直接开始大量角色动画与社区 MOD 适配工作。
+
+## 4. 关键系统设计
+
+### 4.1 WindowX 摄像机系统
+
+优先调用 WindowX 的公开接口：
+
+- `WindowXClientApi.create(...)`
+- `ClientWindow.bindCamera(...)`
+- `ClientWindow.configureCamera(...)`
+- `CameraProjection.ORTHOGRAPHIC`
+
+开发一个 `WindowXCameraBridge`，统一管理摄像机创建、跟随、旋转、输出与恢复。
+
+第一步先使用 WindowX 独立窗口做摄像机原型；第二步验证能否在主游戏窗口中显示或接管该视角。如果公开 API 不够，需要少量专门的 Mixin，而不能假设 WindowX 原生支持完整主视角替换。
+
+另行开发前景遮挡处理：区分视觉上需要隐藏的方块和物理上仍然存在的方块，避免透视处理改变实际碰撞。
+
+### 4.2 二维运动与 Minecraft 碰撞
+
+建立独立的 `PlaneState`：
+
+- `heading`：当前四方向朝向
+- `anchor`：运动平面锚点
+- `horizontalVelocity`：二维横向速度
+- `verticalVelocity`：竖直速度
+- `movementState`：玩家当前 Celeste 动作
+- `pendingTurn`：等待执行的转向
+
+二维物理计算使用“水平位移 + 竖直位移”，再映射回 Minecraft 三维坐标。
+
+保留 Minecraft 的三维 AABB 碰撞体系，不简单地把整个世界投影后当作二维碰撞地图。必要时对 Celeste 角色使用经过调校的碰撞尺寸。
+
+每个 Minecraft 服务端逻辑 Tick 内执行三个固定 1/60 秒的运动子步；客户端进行输入预测与渲染插值，服务端负责权威碰撞和状态校正。
+
+原版 Celeste 的像素速度不能直接当作 Minecraft 方块单位。需要独立配置移动速度、跳跃高度、冲刺距离和碰撞箱尺寸，并通过测试关卡调校。
+
+### 4.3 角色美术与动画
+
+参考 desk-madeline，优先从用户自行安装的 Celeste 游戏目录读取：
+
+- `Content/Graphics/Atlases/`
+- `Content/Graphics/Sprites.xml`
+- 相应的 Gameplay 图集元数据和图片数据
+
+由 `CelesteAssetLoader` 加载到本地内存中的动态贴图资源，`MadelineRenderer` 负责根据运动状态选择动画，`HairSimulation` 负责头发与冲刺颜色。
+
+默认 MOD 发布包不包含 Celeste 原版美术、音乐或音效。未检测到游戏安装时，显示原创占位角色并提供路径选择界面。
+
+### 4.4 键位同步
+
+实现 `CelesteSettingsReader`，定位并只读解析 Celeste 的 `settings.celeste`。
+
+支持一项操作多个按键、键盘与手柄映射、键位冲突检测、重新扫描和手动覆盖。
+
+CeleMod 用作键位管理交互与配置格式的参考；解析器原则上独立实现，不直接复制 GPL-3.0 源码。
+
+R 与 Tab 属于 SteveToMadeline 的独立操作键。在 Celeste 模式生效时截获对应游戏输入；GUI、聊天框等界面中的按键交互应维持正常行为。
+
+### 4.5 精选社区 MOD 兼容
+
+兼容层只实现已选择的功能，不让 Minecraft 直接运行 Everest MOD DLL。
+
+| 项目                   | 兼容目标                          |
+| -------------------- | ----------------------------- |
+| Motion Smoothing     | 参考角色、摄像机插值和高刷新率显示思路           |
+| Skin Mod Helper Plus | 读取可支持的皮肤配置、动画替换、头发颜色及角色配置     |
+| Foxeline             | 参考狐狸尾巴等额外角色表现；资源与代码的复用须单独核对授权 |
+
+使用适配器接口，例如 `SkinProvider`、`AnimationExtension`、`CharacterAccessory`，避免把特定社区 MOD 的逻辑直接硬编码进玩家物理系统。
+
+## 5. 推荐代码模块
+
+| 模块               | 职责                                                |
+| ---------------- | ------------------------------------------------- |
+| `core.mode`      | R 开关、状态生命周期、四方向模式                                 |
+| `core.plane`     | 运动平面、坐标投影、Tab 转向                                  |
+| `core.physics`   | Celeste 运动与碰撞状态机                                  |
+| `client.windowx` | WindowX API、正交摄像机、窗口管理                            |
+| `client.render`  | 玛德琳渲染、动画、头发、遮挡                                    |
+| `client.assets`  | Celeste 安装检测、图集解析、纹理缓存                            |
+| `client.input`   | 键位管理、Celeste 配置同步                                 |
+| `compat`         | Motion Smoothing、Foxeline、Skin Mod Helper Plus 适配 |
+| `network`        | 输入同步、状态同步、服务端校正                                   |
+| `test`           | 方向切换、物理确定性、碰撞与回归测试                                |
+
+模块应区分公共逻辑与仅客户端运行的组件，避免专用服务端加载 WindowX 或图形系统的客户端类。
+
+## 6. 测试策略
+
+在专用测试世界制作一组平台关卡，覆盖平地、单方块台阶、墙面、洞穴、天花板、狭窄通道、移动方块和前景遮挡。
+
+重点验证：
+
+1. R 模式切换不改变玩家真实位置或丢失原版状态。
+2. Tab 连续旋转四次后朝向与原来一致，且不会产生位置漂移。
+3. 四个朝向的水平控制与左右动画保持一致。
+4. 冲刺与攀爬不会让角色穿过 Minecraft 实体方块。
+5. 摄像机不会在拐角处突然翻转、丢失玩家或严重抖动。
+6. Celeste 资源缺失、MOD 冲突、死亡、传送、维度切换时能够安全恢复。
+7. 客户端高帧率和不同服务端延迟下，运动结果保持合理一致。
+
+## 7. 主要风险及应对
+
+| 风险                            | 应对方案                                    |
+| ----------------------------- | --------------------------------------- |
+| WindowX 无法直接替换主摄像机            | P0 先验证；必要时使用主渲染 Mixin 与 WindowX 摄像机输出桥接 |
+| Minecraft 方块尺寸与 Celeste 物理不匹配 | 通过独立参数、专门测试关卡调校，不机械照搬像素数值               |
+| 60Hz 运动与 20Hz 服务端产生偏差         | 固定子步、输入预测、服务端权威校正                       |
+| 任意方向切换产生穿墙或运动突变               | 保留三维碰撞检测，旋转前后执行安全性检查                    |
+| 美术资源版权风险                      | 本地动态加载、不随 MOD 分发、公开发行前确认授权边界            |
+| 社区 MOD 许可与格式不统一               | 独立适配、保留来源与许可证记录，未经授权不复制资源               |
+| WindowX Beta 接口变化             | 锁定测试版本，所有 WindowX 依赖集中到桥接模块             |
+
+## 8. 参考资料
+
+**核心技术**
+
+1. [Celeste 官方公开 Player.cs](https://github.com/NoelFB/Celeste/blob/master/Source/Player/Player.cs) — 运动状态机与关键参数。
+2. [Celeste 官方源码仓库](https://github.com/NoelFB/Celeste) — 许可证、公开代码范围及其他参考实现。
+3. [NeoForge 1.21.1 键位文档](https://docs.neoforged.net/docs/1.21.1/misc/keymappings/) — 输入注册与按键处理。
+4. [NeoForge 1.21.1 网络文档](https://docs.neoforged.net/docs/1.21.1/networking/) — 自定义 Payload 与客户端/服务端同步。
+
+**角色表现与输入**
+
+5. [desk-madeline](https://github.com/solstice23/desk-madeline) — 独立玛德琳实现。
+6. [CelesteAtlas.cs](https://github.com/solstice23/desk-madeline/blob/master/CelesteAtlas.cs) — 原版图集读取。
+7. [CelesteInstall.cs](https://github.com/solstice23/desk-madeline/blob/master/CelesteInstall.cs) — 原版安装检测。
+8. [CeleMod](https://github.com/std-microblock/CeleMod) — 键位管理与 MOD 配置处理。
+
+**社区兼容**
+
+9. [Motion Smoothing](https://github.com/FancyFurret/celeste-motion-smoothing) — 固定物理与高刷新率渲染。
+10. [Foxeline](https://github.com/PurredCoffee/Foxeline) — 角色尾巴等附加表现。
+11. [Skin Mod Helper Plus](https://gamebanana.com/mods/473796) — 皮肤与角色外观配置。
+12. [desk-madeline SkinModHelper.cs](https://github.com/solstice23/desk-madeline/blob/master/SkinModHelper.cs) — 有价值的兼容层参考。
+13. [desk-madeline 第三方许可说明](https://github.com/solstice23/desk-madeline/blob/master/THIRD_PARTY_NOTICES.md) — 相关移植与第三方资产许可证。
+
+## 9. 发布里程碑
+
+**v0.1 技术原型：** WindowX 侧视摄像机 + R/Tab 平面切换 + 基础横版行走与跳跃。
+
+**v0.2 可玩版本：** 完整基础 Celeste 移动机制、碰撞调校与稳定的摄像机跟随。
+
+**v0.3 角色版本：** 本地资源加载、玛德琳动画、头发与 Celeste 键位同步。
+
+**v0.4 兼容测试版：** Motion Smoothing 风格插值、Skin Mod Helper Plus 数据支持、Foxeline 外观支持。
+
+**v1.0 正式版：** 联机稳定、异常场景恢复、安装配置向导、发布文档与资源许可说明。
+
+**最终开发原则：先让它在 Minecraft 世界里正确地跑、跳、冲刺和转向，再追求与 Celeste 原版相同的视觉完成度。**
+
+## 我建议额外注意的两点
+
+第一，不要把 P0 当成普通的准备工作。 我检查了 JAR：WindowX 有 `ORTHOGRAPHIC`、`CameraRegistry`、`WindowXClientApi` 等接口，但是主窗口接管、渲染纹理传递和输入焦点仍未经过运行验证。建议首先做一个只有 R/Tab、调试角色和横版摄像机的技术原型，确认核心能力之后再展开物理移植。
+
+第二，针对性兼容不等于直接安装 Everest MOD。 Motion Smoothing 确实有独立的固定物理与显示插值设计；desk-madeline 的第三方许可说明也明确记录了 Skin Mod Helper Plus 部分配置和渲染逻辑的移植来源。它们提供了很好的实现路径，但不能因此保证原版 Everest MOD 安装包可以直接在 Minecraft 中工作。
+
+[image](https://www.google.com/s2/favicons?domain=https://github.com\&sz=32)
+
+GitHub
+
++2
+
+
+
+参考代码的许可边界也已核对：Celeste 公开源码的 MIT 许可不涵盖商业游戏资源；desk-madeline 为 MIT，CeleMod 为 GPL-3.0。尤其是 Foxeline，其仓库主页没有显示明确的许可证，发布时应先确认其代码和贴图的复用授权。
+
+[image](https://www.google.com/s2/favicons?domain=https://github.com\&sz=32)
+
+GitHub
+
++3
+
+
+
+如果按照这份计划开发，我会将第一个真正的成果定义为：在现有 Minecraft 世界中，按 R 进入侧视模式，按 Tab 原地改变运动平面，能沿着方块地形移动，最后按 R 无损回到原版 Minecraft。这一闭环完成，项目最关键的架构风险就解决了。

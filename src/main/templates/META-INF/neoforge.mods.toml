@@ -1,0 +1,38 @@
+# SteveToMadeline 元数据。占位符由 Gradle 在 generateModMetadata 阶段展开。
+modLoader="javafml"
+loaderVersion="${loader_version_range}"
+
+# 许可证待定：计划书要求发布前确认 Celeste 资源与参考项目的授权边界
+license="${mod_license}"
+
+[[mods]]
+modId="${mod_id}"
+version="${mod_version}"
+displayName="${mod_name}"
+authors="TNOTawa"
+description='''
+Minecraft 1.21.1 NeoForge 上的 Celeste 风格二维横版移动：R 进入/退出 Celeste 模式，Tab 旋转运动平面，
+由 WindowX 提供侧视正交摄像机，玛德琳由本地 Celeste 资源动态加载。
+'''
+
+# WindowX 是硬前置（API 版本锁定在 libs 内）
+[[dependencies.${mod_id}]]
+    modId="windowx"
+    type="required"
+    versionRange="[1.0.0,)"
+    ordering="AFTER"
+    side="CLIENT"
+
+[[dependencies.${mod_id}]]
+    modId="neoforge"
+    type="required"
+    versionRange="${neo_version_range}"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.${mod_id}]]
+    modId="minecraft"
+    type="required"
+    versionRange="${minecraft_version_range}"
+    ordering="NONE"
+    side="BOTH"
