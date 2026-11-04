@@ -13,10 +13,4 @@ public interface CameraPoseAccess {
 
     @Invoker("setRotation")
     void stevetomadeline$setRotation(float yaw, float pitch);
-
-    static void setPose(Camera camera, Vec3 position, float yaw, float pitch) {
-        CameraPoseAccess access = (CameraPoseAccess) (Object) camera;
-        access.stevetomadeline$setPosition(position);
-        access.stevetomadeline$setRotation(yaw, pitch);
-    }
 }

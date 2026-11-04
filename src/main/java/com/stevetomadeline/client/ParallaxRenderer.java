@@ -79,7 +79,9 @@ public final class ParallaxRenderer {
         int[] viewport = new int[4];
         GL11.glGetIntegerv(GL11.GL_VIEWPORT, viewport);
 
-        CameraPoseAccess.setPose(camera, lagged, savedYaw, savedPitch);
+        CameraPoseAccess access = (CameraPoseAccess) (Object) camera;
+        access.stevetomadeline$setPosition(lagged);
+        access.stevetomadeline$setRotation(savedYaw, savedPitch);
         rendering = true;
         try {
             target.bindWrite(true);
@@ -100,7 +102,8 @@ public final class ParallaxRenderer {
             main.bindWrite(true);
             RenderSystem.viewport(viewport[0], viewport[1], viewport[2], viewport[3]);
             RenderSystem.setProjectionMatrix(savedProjection, VertexSorting.ORTHOGRAPHIC_Z);
-            CameraPoseAccess.setPose(camera, savedPosition, savedYaw, savedPitch);
+            access.stevetomadeline$setPosition(savedPosition);
+            access.stevetomadeline$setRotation(savedYaw, savedPitch);
         }
         if (!logged) {
             logged = true;
