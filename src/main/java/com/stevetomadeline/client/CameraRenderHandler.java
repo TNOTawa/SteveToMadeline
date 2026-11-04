@@ -171,12 +171,14 @@ public final class CameraRenderHandler {
         return mc.getBlockRenderer().getBlockModel(state).getParticleIcon(ModelData.EMPTY);
     }
 
+    /** 泰拉瑞亚式光照：环境底光较高，天光按昼夜衰减，方块光优先。 */
     private static float brightness(ClientLevel level, BlockPos pos, float partialTick) {
         int sky = level.getBrightness(LightLayer.SKY, pos);
         int block = level.getBrightness(LightLayer.BLOCK, pos);
-        float darken = level.getSkyDarken(partialTick);
-        float light = Math.max(block, sky * darken) / 15.0f;
-        return 0.15f + 0.85f * Mth.clamp(light, 0.0f, 1.0f);
+        float time = level.getTimeOfDay(partialTick);
+        float sun = Mth.clamp(Mth.cos(time * (float) Math.PI * 2.0f) * 2.0f + 0.5f, 0.0f, 1.0f);
+        float light = Math.max(block / 15.0f, (sky / 15.0f) * sun);
+        return 0.35f + 0.65f * light;
     }
 
     private static void tileVertex(BufferBuilder buffer, double x, double y, double z,

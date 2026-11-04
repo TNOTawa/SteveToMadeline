@@ -24,6 +24,10 @@ public final class Config {
             .comment("2D 模式的切片半厚度（方块）：只渲染玩家所在轴前后各该距离内的方块与实体。")
             .defineInRange("sliceHalfThickness", 1.0, 0.25, 2.5);
 
+    public static final ModConfigSpec.DoubleValue CAMERA_FOV = BUILDER
+            .comment("摄像机视野角（度）。0 = 严格正交；20-45 之间是轻微透视，会有前后景视差。")
+            .defineInRange("cameraFov", 0.0, 0.0, 110.0);
+
     public static final ModConfigSpec.DoubleValue FOG_START = BUILDER
             .comment("雾开始距离（方块）。")
             .defineInRange("fogStart", 12.0, 0.0, 256.0);

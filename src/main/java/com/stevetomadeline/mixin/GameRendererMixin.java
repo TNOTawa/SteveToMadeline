@@ -46,6 +46,12 @@ public abstract class GameRendererMixin {
             near = (float) Math.max(0.05, distance - slice);
         }
         float far = (float) Math.max(512.0, distance + 512.0);
-        cir.setReturnValue(new Matrix4f().ortho(-halfWidth, halfWidth, -halfHeight, halfHeight, near, far));
+        double perspectiveFov = Config.CAMERA_FOV.get();
+        if (perspectiveFov > 0.5) {
+            cir.setReturnValue(new Matrix4f().perspective(
+                    (float) Math.toRadians(perspectiveFov), aspect, near, far));
+        } else {
+            cir.setReturnValue(new Matrix4f().ortho(-halfWidth, halfWidth, -halfHeight, halfHeight, near, far));
+        }
     }
 }

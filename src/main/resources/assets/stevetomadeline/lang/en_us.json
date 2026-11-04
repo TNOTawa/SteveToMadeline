@@ -6,6 +6,7 @@
   "stevetomadeline.configuration.cameraDistance": "Camera Distance (blocks)",
   "stevetomadeline.configuration.orthoHalfHeight": "Ortho Half Height (blocks)",
   "stevetomadeline.configuration.sliceHalfThickness": "2D Slice Half Thickness (blocks)",
+  "stevetomadeline.configuration.cameraFov": "Camera FOV (0 = orthographic)",
   "stevetomadeline.configuration.fogStart": "Fog Start (blocks)",
   "stevetomadeline.configuration.fogEnd": "Fog End (blocks)",
 
