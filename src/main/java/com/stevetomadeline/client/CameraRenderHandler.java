@@ -6,7 +6,6 @@ import com.mojang.blaze3d.vertex.BufferUploader;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.Tesselator;
 import com.mojang.blaze3d.vertex.VertexFormat;
-import com.mojang.blaze3d.vertex.VertexSorting;
 import com.mojang.logging.LogUtils;
 import com.stevetomadeline.Config;
 import com.stevetomadeline.SteveToMadeline;
@@ -28,125 +27,39 @@ import net.minecraft.world.phys.Vec3;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.client.event.RenderGuiLayerEvent;
 import net.neoforged.neoforge.client.event.RenderHandEvent;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
+import net.neoforged.neoforge.client.event.ViewportEvent;
+import net.neoforged.neoforge.client.gui.VanillaGuiLayers;
 import net.neoforged.neoforge.client.model.data.ModelData;
-import org.joml.Matrix4f;
-import org.joml.Matrix4fStack;
-import org.lwjgl.opengl.GL11;
 import org.slf4j.Logger;
 
 import java.util.List;
 
 /**
- * 方案 A：正交切片合成。
+ * 2D 模式的前景侧面纹图层。
  *
- * <ul>
- *   <li>远景：真实世界由正交相机照常渲染，切片后方开始加雾；</li>
- *   <li>前景：在切片平面上用方块“朝向相机那一面”的贴图叠加一层，空气格留空透出远景；</li>
- *   <li>天空盒由与雾色一致的底图覆盖；手持物品不渲染。</li>
- * </ul>
+ * <p>背景保持普通正交相机：原版天空盒、昼夜、雾效全部保留；本类只负责在玩家所在轴上
+ * 叠加一层“方块朝向摄像机那一面”的贴图，空气格透出后方真实世界。
+ *
+ * <p>另外：摄像机模式下隐藏准星与手持物品；雾色固定为当前天空色，避免入水时突变。
  */
 @EventBusSubscriber(modid = SteveToMadeline.MODID, value = Dist.CLIENT)
 public final class CameraRenderHandler {
     private static final Logger LOG = LogUtils.getLogger();
-    private static final float Z_BACKDROP = 900.0f;
-    private static boolean fogLogged;
+    private static boolean loggedOnce;
 
     private CameraRenderHandler() {
     }
 
-    private static boolean flat() {
-        return RenderModeManager.isFlat2D();
-    }
-
-    private static float[] fogColor() {
-        Minecraft mc = Minecraft.getInstance();
-        LocalPlayer player = mc.player;
-        boolean sky = player != null && mc.level != null && mc.level.canSeeSky(player.blockPosition());
-        return sky ? new float[]{0.62f, 0.74f, 0.92f} : new float[]{0.02f, 0.02f, 0.03f};
-    }
-
     @SubscribeEvent
     public static void onRenderStage(RenderLevelStageEvent event) {
-        if (!RenderModeManager.isCameraMode()) {
+        if (!RenderModeManager.isFlat2D()) {
             return;
         }
-        if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_SKY) {
-            if (flat()) {
-                drawBackdrop();
-                applyFog();
-            }
-        } else if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS && flat()) {
+        if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) {
             drawForegroundSlice(event.getPartialTick().getGameTimeDeltaPartialTick(false));
-        }
-    }
-
-    private static void drawBackdrop() {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.level == null) {
-            return;
-        }
-        int[] viewport = new int[4];
-        GL11.glGetIntegerv(GL11.GL_VIEWPORT, viewport);
-        int width = Math.max(1, viewport[2]);
-        int height = Math.max(1, viewport[3]);
-        float[] color = fogColor();
-
-        Matrix4f previousProjection = new Matrix4f(RenderSystem.getProjectionMatrix());
-        Matrix4fStack modelView = RenderSystem.getModelViewStack();
-        modelView.pushMatrix();
-        modelView.identity();
-        RenderSystem.applyModelViewMatrix();
-        RenderSystem.setProjectionMatrix(
-                new Matrix4f().setOrtho(0.0f, width, height, 0.0f, -1000.0f, 1000.0f),
-                VertexSorting.DISTANCE_TO_ORIGIN);
-
-        int previousDepthFunc = GL11.glGetInteger(GL11.GL_DEPTH_FUNC);
-        RenderSystem.enableDepthTest();
-        RenderSystem.depthMask(true);
-        RenderSystem.depthFunc(GL11.GL_ALWAYS);
-        RenderSystem.disableCull();
-        RenderSystem.disableBlend();
-        try {
-            RenderSystem.setShader(GameRenderer::getPositionColorShader);
-            BufferBuilder buffer = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
-            colorVertex(buffer, 0.0f, 0.0f, color);
-            colorVertex(buffer, 0.0f, height, color);
-            colorVertex(buffer, width, height, color);
-            colorVertex(buffer, width, 0.0f, color);
-            BufferUploader.drawWithShader(buffer.buildOrThrow());
-        } finally {
-            RenderSystem.depthFunc(previousDepthFunc);
-            RenderSystem.depthMask(true);
-            RenderSystem.enableDepthTest();
-            RenderSystem.enableCull();
-            RenderSystem.setProjectionMatrix(previousProjection, VertexSorting.ORTHOGRAPHIC_Z);
-            modelView.popMatrix();
-            RenderSystem.applyModelViewMatrix();
-        }
-    }
-
-    private static void colorVertex(BufferBuilder buffer, float x, float y, float[] color) {
-        buffer.addVertex(x, y, Z_BACKDROP).setColor(color[0], color[1], color[2], 1.0f);
-    }
-
-    private static void applyFog() {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.level == null) {
-            return;
-        }
-        double distance = Config.CAMERA_DISTANCE.get();
-        double slice = Config.SLICE_HALF_THICKNESS.get();
-        float start = (float) (distance + slice);
-        float end = (float) Math.max(start + 16.0, Config.FOG_END.get());
-        float[] color = fogColor();
-        RenderSystem.setShaderFogStart(start);
-        RenderSystem.setShaderFogEnd(end);
-        RenderSystem.setShaderFogColor(color[0], color[1], color[2], 1.0f);
-        if (!fogLogged) {
-            fogLogged = true;
-            LOG.info("[STM] fog applied: {} -> {}", start, end);
         }
     }
 
@@ -167,12 +80,12 @@ public final class CameraRenderHandler {
                 ? (forward.z > 0 ? Direction.NORTH : Direction.SOUTH)
                 : (forward.x > 0 ? Direction.WEST : Direction.EAST);
 
-        double distance = Config.CAMERA_DISTANCE.get();
+        // 切片平面：玩家所在轴，略微朝远处偏移，避免与玩家自身深度打架。
         double slice = Config.SLICE_HALF_THICKNESS.get();
-        double offset = distance + slice * 0.5;
+        double planeOffset = slice * 0.5;
         double planeCoordinate = zPlane
-                ? eye.z + forward.z * offset
-                : eye.x + forward.x * offset;
+                ? eye.z + forward.z * planeOffset
+                : eye.x + forward.x * planeOffset;
         int planeBlock = zPlane ? Mth.floor(eye.z) : Mth.floor(eye.x);
 
         float halfHeight = (float) Config.ORTHO_HALF_HEIGHT.get().doubleValue();
@@ -239,6 +152,10 @@ public final class CameraRenderHandler {
         if (drawn > 0) {
             BufferUploader.drawWithShader(buffer.buildOrThrow());
         }
+        if (!loggedOnce) {
+            loggedOnce = true;
+            LOG.info("[STM] 2D foreground slice: {} quads at plane {} (yaw {})", drawn, planeCoordinate, yaw);
+        }
         RenderSystem.depthMask(true);
         RenderSystem.disableBlend();
     }
@@ -272,5 +189,28 @@ public final class CameraRenderHandler {
         if (RenderModeManager.isCameraMode()) {
             event.setCanceled(true);
         }
+    }
+
+    @SubscribeEvent
+    public static void onRenderOverlay(RenderGuiLayerEvent.Pre event) {
+        if (RenderModeManager.isCameraMode() && VanillaGuiLayers.CROSSHAIR.equals(event.getName())) {
+            event.setCanceled(true);
+        }
+    }
+
+    /** 摄像机模式下固定雾色为当前天空色，避免入水/岩浆时天空盒突变。 */
+    @SubscribeEvent
+    public static void onFogColor(ViewportEvent.ComputeFogColor event) {
+        if (!RenderModeManager.isCameraMode()) {
+            return;
+        }
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level == null || mc.player == null) {
+            return;
+        }
+        Vec3 color = mc.level.getSkyColor(mc.player.position(), (float) event.getPartialTick());
+        event.setRed((float) color.x);
+        event.setGreen((float) color.y);
+        event.setBlue((float) color.z);
     }
 }
