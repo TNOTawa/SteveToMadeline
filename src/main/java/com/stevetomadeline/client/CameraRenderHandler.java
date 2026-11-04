@@ -99,6 +99,7 @@ public final class CameraRenderHandler {
         RenderSystem.defaultBlendFunc();
         RenderSystem.enableDepthTest();
         RenderSystem.depthMask(false);
+        RenderSystem.disableCull();
         RenderSystem.setShader(GameRenderer::getPositionTexColorShader);
         RenderSystem.setShaderTexture(0, TextureAtlas.LOCATION_BLOCKS);
 
@@ -157,6 +158,7 @@ public final class CameraRenderHandler {
             LOG.info("[STM] 2D foreground slice: {} quads at plane {} (yaw {})", drawn, planeCoordinate, yaw);
         }
         RenderSystem.depthMask(true);
+        RenderSystem.enableCull();
         RenderSystem.disableBlend();
     }
 

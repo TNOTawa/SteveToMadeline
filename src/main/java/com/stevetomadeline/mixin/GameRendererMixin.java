@@ -1,6 +1,7 @@
 package com.stevetomadeline.mixin;
 
 import com.mojang.blaze3d.platform.Window;
+import com.mojang.blaze3d.vertex.PoseStack;
 import com.stevetomadeline.Config;
 import com.stevetomadeline.client.mode.RenderModeManager;
 import net.minecraft.client.Minecraft;
@@ -9,6 +10,7 @@ import org.joml.Matrix4f;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
@@ -20,6 +22,13 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  */
 @Mixin(GameRenderer.class)
 public abstract class GameRendererMixin {
+    @Inject(method = "bobView", at = @At("HEAD"), cancellable = true, require = 0)
+    private void stevetomadeline$noBobbing(PoseStack poseStack, float partialTick, CallbackInfo ci) {
+        if (RenderModeManager.isCameraMode()) {
+            ci.cancel();
+        }
+    }
+
     @Inject(method = "getProjectionMatrix(D)Lorg/joml/Matrix4f;", at = @At("RETURN"),
             cancellable = true, require = 0)
     private void stevetomadeline$orthographic(double fov, CallbackInfoReturnable<Matrix4f> cir) {
