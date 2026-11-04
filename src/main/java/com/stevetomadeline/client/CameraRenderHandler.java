@@ -55,11 +55,20 @@ public final class CameraRenderHandler {
 
     @SubscribeEvent
     public static void onRenderStage(RenderLevelStageEvent event) {
+        if (ParallaxRenderer.isRendering()) {
+            return;
+        }
         if (!RenderModeManager.isFlat2D()) {
             return;
         }
-        if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) {
-            drawForegroundSlice(event.getPartialTick().getGameTimeDeltaPartialTick(false));
+        float partialTick = event.getPartialTick().getGameTimeDeltaPartialTick(false);
+        if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_SKY) {
+            if (ParallaxRenderer.enabled()) {
+                ParallaxRenderer.renderBackground(partialTick);
+                ParallaxRenderer.composite();
+            }
+        } else if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) {
+            drawForegroundSlice(partialTick);
         }
     }
 

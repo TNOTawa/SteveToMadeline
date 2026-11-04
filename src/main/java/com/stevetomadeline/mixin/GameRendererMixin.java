@@ -41,11 +41,15 @@ public abstract class GameRendererMixin {
         float halfWidth = halfHeight * aspect;
         double distance = Config.CAMERA_DISTANCE.get();
         float near = 0.05f;
+        float far = (float) Math.max(512.0, distance + 512.0);
         if (RenderModeManager.isFlat2D()) {
             double slice = Config.SLICE_HALF_THICKNESS.get();
             near = (float) Math.max(0.05, distance - slice);
+            if (Config.LAYERED_PARALLAX.get()) {
+                // 远景交给背景缓冲，主画面只保留切片
+                far = (float) (distance + slice);
+            }
         }
-        float far = (float) Math.max(512.0, distance + 512.0);
         double perspectiveFov = Config.CAMERA_FOV.get();
         if (perspectiveFov > 0.5) {
             cir.setReturnValue(new Matrix4f().perspective(

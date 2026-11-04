@@ -24,6 +24,14 @@ public final class Config {
             .comment("2D 模式的切片半厚度（方块）：只渲染玩家所在轴前后各该距离内的方块与实体。")
             .defineInRange("sliceHalfThickness", 1.0, 0.25, 2.5);
 
+    public static final ModConfigSpec.BooleanValue LAYERED_PARALLAX = BUILDER
+            .comment("分层视差：远景用滞后相机单独渲染到半分辨率缓冲，前景保持 100% 跟随。")
+            .define("layeredParallax", false);
+
+    public static final ModConfigSpec.DoubleValue PARALLAX_RATIO = BUILDER
+            .comment("远景跟随比例（0.2-0.8）。越小纵深越强，但远景偏移越大。")
+            .defineInRange("parallaxRatio", 0.4, 0.2, 0.8);
+
     public static final ModConfigSpec.DoubleValue PARALLAX_STRENGTH = BUILDER
             .comment("正交伪视差强度：前景层随移动速度产生的横向超前量。0 = 关闭。")
             .defineInRange("parallaxStrength", 0.0, 0.0, 8.0);

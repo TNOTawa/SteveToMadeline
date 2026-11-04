@@ -1,6 +1,7 @@
 package com.stevetomadeline.mixin;
 
 import com.stevetomadeline.Config;
+import com.stevetomadeline.client.ParallaxRenderer;
 import com.stevetomadeline.client.mode.RenderModeManager;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.Minecraft;
@@ -22,6 +23,10 @@ public abstract class LevelRendererMixin {
     private void stevetomadeline$filterEntitiesInFlat2D(Entity entity, double x, double y, double z,
                                                         float partialTick, PoseStack poseStack,
                                                         MultiBufferSource bufferSource, CallbackInfo ci) {
+        if (ParallaxRenderer.isRendering()) {
+            ci.cancel();
+            return;
+        }
         if (!RenderModeManager.isFlat2D()) {
             return;
         }

@@ -37,5 +37,6 @@ public final class SteveToMadelineClient {
     private static void onLoggingOut(ClientPlayerNetworkEvent.LoggingOut event) {
         WindowXCameraBridge.stop();
         RenderModeManager.reset();
+        com.stevetomadeline.client.ParallaxRenderer.reset();
     }
 }
