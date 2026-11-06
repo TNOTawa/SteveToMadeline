@@ -3,6 +3,8 @@ package com.stevetomadeline.client.input;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.stevetomadeline.client.assets.CelesteAssets;
 import com.stevetomadeline.client.windowx.WindowXCompat;
+import java.util.ArrayList;
+import java.util.List;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Checkbox;
@@ -17,6 +19,8 @@ import org.lwjgl.glfw.GLFW;
 import org.lwjgl.util.tinyfd.TinyFileDialogs;
 
 public final class MadelineSettingsScreen extends Screen {
+    private static final String[] TABS = {"settings.controls", "settings.character", "settings.effects",
+            "settings.gamepad", "settings.camera"};
     private final Screen parent;
     private int page, tab, rows, start, contentWidth;
     private ControlBindings.Action listening;
@@ -27,17 +31,26 @@ public final class MadelineSettingsScreen extends Screen {
     private Button button(Component label, int x, int y, int w, Runnable action) {
         return addRenderableWidget(Button.builder(label, b -> action.run()).bounds(x, y, w, 20).build());
     }
+    private int labelWidth() { return Math.min(140, contentWidth * 2 / 5); }
     @Override protected void init() {
         CelesteAssets.ensure();
         contentWidth = Math.min(440, width - 24); start = (width - contentWidth) / 2;
-        button(text("settings.controls"), start, 30, contentWidth / 4 - 2, () -> { tab = 0; listening = null; rebuildWidgets(); }).active = tab != 0;
-        button(text("settings.character"), start + contentWidth / 4, 30, contentWidth / 4 - 2, () -> { tab = 1; listening = null; rebuildWidgets(); }).active = tab != 1;
-        button(text("settings.effects"), start + contentWidth / 2, 30, contentWidth / 4 - 2, () -> { tab = 2; listening = null; rebuildWidgets(); }).active = tab != 2;
-        button(text("settings.camera"), start + contentWidth * 3 / 4, 30, contentWidth / 4, () ->
-                ModList.get().getModContainerById("stevetomadeline").ifPresent(container -> minecraft.setScreen(
-                        new ConfigurationScreen(container, this, (context, key, element) ->
-                                showCameraOption(key, WindowXCompat.available()) ? element : null))));
-        if (tab == 0) controls(); else if (tab == 1) character(); else effects();
+        for (int index = 0; index < TABS.length; index++) {
+            int current = index;
+            int x = start + contentWidth * index / TABS.length;
+            int w = contentWidth * (index + 1) / TABS.length - contentWidth * index / TABS.length - (index < TABS.length - 1 ? 2 : 0);
+            Button entry = button(text(TABS[index]), x, 30, w, () -> {
+                if (current == TABS.length - 1) {
+                    ModList.get().getModContainerById("stevetomadeline").ifPresent(container -> minecraft.setScreen(
+                            new ConfigurationScreen(container, this, (context, key, element) ->
+                                    showCameraOption(key, WindowXCompat.available()) ? element : null)));
+                    return;
+                }
+                tab = current; listening = null; GamepadInput.endCapture(); rebuildWidgets();
+            });
+            entry.active = current == TABS.length - 1 || tab != current;
+        }
+        if (tab == 0) controls(); else if (tab == 1) character(); else if (tab == 2) effects(); else if (tab == 3) gamepad();
         button(Component.translatable("gui.done"), width / 2 - 70, height - 26, 140, this::onClose);
     }
     static boolean showCameraOption(String key, boolean windowXAvailable) {
@@ -59,27 +72,52 @@ public final class MadelineSettingsScreen extends Screen {
         rows = Math.max(1, (height - 154) / 23);
         int count = ControlBindings.Action.values().length, pages = (count + rows - 1) / rows;
         page = Math.min(page, pages - 1);
-        int labelWidth = Math.min(150, contentWidth * 2 / 5), keyWidth = (contentWidth - labelWidth) / 3;
+        int labelWidth = labelWidth(), keyWidth = (contentWidth - labelWidth) / ControlBindings.SLOTS;
         for (int row = 0; row < rows && page * rows + row < count; row++) {
             var action = ControlBindings.Action.values()[page * rows + row];
-            for (int slot = 0; slot < 3; slot++) {
+            for (int slot = 0; slot < ControlBindings.SLOTS; slot++) {
                 final int index = slot;
                 Component name = listening == action && listeningSlot == slot ? text("controls.listening") : ControlBindings.name(ControlBindings.get(action, slot));
                 String shown = font.plainSubstrByWidth(name.getString(), keyWidth - 25);
                 Button button = button(Component.literal(shown).withColor(ControlBindings.conflict(action, slot) ? 0xFFC46A : 0xFFFFFF),
                         start + labelWidth + slot * keyWidth, 90 + row * 23, keyWidth - 19,
-                        () -> { listening = action; listeningSlot = index; rebuildWidgets(); });
+                        () -> { listening = action; listeningSlot = index; GamepadInput.beginCapture(); rebuildWidgets(); });
                 Component tooltip = action.label().copy().append("\n").append(name);
                 button.setTooltip(Tooltip.create(ControlBindings.conflict(action, slot)
                         ? tooltip.copy().append("\n").append(text("controls.conflict")) : tooltip));
                 button(Component.literal("x"), start + labelWidth + (slot + 1) * keyWidth - 18, 90 + row * 23, 16,
-                        () -> { ControlBindings.set(action, index, ""); listening = null; rebuildWidgets(); })
+                        () -> { ControlBindings.set(action, index, ""); listening = null; GamepadInput.endCapture(); rebuildWidgets(); })
                         .setTooltip(Tooltip.create(text("controls.clear")));
             }
         }
-        button(Component.literal("<"), start, height - 54, 24, () -> { page--; listening = null; rebuildWidgets(); }).active = page > 0;
-        button(Component.literal(">"), start + 28, height - 54, 24, () -> { page++; listening = null; rebuildWidgets(); }).active = page + 1 < pages;
-        button(text("controls.defaults"), start + contentWidth - 120, height - 54, 120, () -> { ControlBindings.defaults(); listening = null; rebuildWidgets(); });
+        button(Component.literal("<"), start, height - 54, 24, () -> { page--; listening = null; GamepadInput.endCapture(); rebuildWidgets(); }).active = page > 0;
+        button(Component.literal(">"), start + 28, height - 54, 24, () -> { page++; listening = null; GamepadInput.endCapture(); rebuildWidgets(); }).active = page + 1 < pages;
+        button(text("controls.defaults"), start + contentWidth - 120, height - 54, 120, () -> {
+            ControlBindings.defaults(); listening = null; GamepadInput.endCapture(); rebuildWidgets();
+        });
+    }
+    private void gamepad() {
+        GamepadOptions options = ControlBindings.gamepad();
+        addRenderableWidget(Checkbox.builder(text("gamepad.enabled"), font).pos(start, 62).maxWidth(contentWidth)
+                .selected(options.enabled()).onValueChange((checkbox, enabled) -> {
+                    GamepadOptions old = ControlBindings.gamepad();
+                    ControlBindings.gamepad(new GamepadOptions(enabled, old.deadzone()));
+                    rebuildWidgets();
+                }).build());
+        addRenderableWidget(new AbstractSliderButton(start, 90, contentWidth, 20, Component.empty(),
+                (options.deadzone() - GamepadOptions.MIN_DEADZONE) / (GamepadOptions.MAX_DEADZONE - GamepadOptions.MIN_DEADZONE)) {
+            { updateMessage(); }
+            @Override protected void updateMessage() { setMessage(Component.translatable("stevetomadeline.gamepad.deadzone", percent())); }
+            @Override protected void applyValue() {
+                GamepadOptions old = ControlBindings.gamepad();
+                ControlBindings.gamepad(new GamepadOptions(old.enabled(),
+                        GamepadOptions.MIN_DEADZONE + value * (GamepadOptions.MAX_DEADZONE - GamepadOptions.MIN_DEADZONE)));
+            }
+            private int percent() {
+                return (int) Math.round(100 * (GamepadOptions.MIN_DEADZONE + value * (GamepadOptions.MAX_DEADZONE - GamepadOptions.MIN_DEADZONE)));
+            }
+        });
+        button(text("gamepad.rescan"), start, 118, 120, GamepadInput::rescan);
     }
     private void character() {
         path = addRenderableWidget(new EditBox(font, start, 78, contentWidth - 64, 20, text("assets.path")));
@@ -120,20 +158,45 @@ public final class MadelineSettingsScreen extends Screen {
                     ControlBindings.presentation(new PresentationOptions(old.grabMode(), old.soundEnabled(), old.soundVolume(), value));
                 }).build());
     }
+    private List<Component> gamepadStatus() {
+        List<Component> lines = new ArrayList<>();
+        if (!ControlBindings.gamepad().enabled()) lines.add(text("gamepad.disabled"));
+        else if (GamepadInput.devices().isEmpty()) lines.add(text("gamepad.none"));
+        else for (GamepadInput.Device device : GamepadInput.devices()) lines.add(Component.translatable(
+                device.standard() ? "stevetomadeline.gamepad.standard" : "stevetomadeline.gamepad.raw", device.name()));
+        var held = GamepadInput.held();
+        if (!held.isEmpty()) {
+            StringBuilder names = new StringBuilder();
+            for (String binding : held) {
+                if (!names.isEmpty()) names.append(' ');
+                names.append(ControlBindings.name(binding).getString());
+            }
+            lines.add(Component.translatable("stevetomadeline.gamepad.held", names.toString()));
+        }
+        return lines;
+    }
+    @Override public void tick() {
+        super.tick();
+        if (listening == null) return;
+        String captured = GamepadInput.takeCapture();
+        if (captured == null) return;
+        ControlBindings.set(listening, listeningSlot, captured);
+        listening = null; GamepadInput.endCapture(); rebuildWidgets();
+    }
     @Override public boolean keyPressed(int key, int scan, int modifiers) {
         if (listening != null) {
             if (key != GLFW.GLFW_KEY_ESCAPE) {
                 String name = key == GLFW.GLFW_KEY_BACKSPACE || key == GLFW.GLFW_KEY_DELETE ? "" : InputConstants.getKey(key, scan).getName();
                 ControlBindings.set(listening, listeningSlot, name);
             }
-            listening = null; rebuildWidgets(); return true;
+            listening = null; GamepadInput.endCapture(); rebuildWidgets(); return true;
         }
         return super.keyPressed(key, scan, modifiers);
     }
     @Override public boolean mouseClicked(double x, double y, int button) {
         if (listening != null) {
             ControlBindings.set(listening, listeningSlot, InputConstants.Type.MOUSE.getOrCreate(button).getName());
-            listening = null; rebuildWidgets(); return true;
+            listening = null; GamepadInput.endCapture(); rebuildWidgets(); return true;
         }
         return super.mouseClicked(x, y, button);
     }
@@ -144,20 +207,31 @@ public final class MadelineSettingsScreen extends Screen {
             gui.drawString(font, text("controls.grab"), start, 65, 0xFFFFFF);
             for (int row = 0; row < rows && page * rows + row < ControlBindings.Action.values().length; row++) {
                 var action = ControlBindings.Action.values()[page * rows + row];
-                gui.drawString(font, font.plainSubstrByWidth(action.label().getString(), Math.min(150, contentWidth * 2 / 5) - 4), start, 96 + row * 23, 0xFFFFFF);
+                gui.drawString(font, font.plainSubstrByWidth(action.label().getString(), labelWidth() - 4), start, 96 + row * 23, 0xFFFFFF);
             }
         } else if (tab == 1) {
             gui.drawString(font, text("assets.path"), start, 64, 0xFFFFFF);
             int available = Math.max(0, (height - 194) / 10);
             var lines = font.split(CelesteAssets.status(), contentWidth);
             for (int i = 0; i < Math.min(available, lines.size()); i++) gui.drawString(font, lines.get(i), start, 160 + i * 10, 0xD6D9DE);
-        } else {
+        } else if (tab == 2) {
             var lines = font.split(com.stevetomadeline.client.audio.CelesteAudio.status(), contentWidth);
             for (int i = 0; i < Math.min(Math.max(0, (height - 186) / 10), lines.size()); i++)
                 gui.drawString(font, lines.get(i), start, 152 + i * 10, 0xD6D9DE);
+        } else if (tab == 3) {
+            gui.drawString(font, text("gamepad.status"), start, 148, 0xFFFFFF);
+            int y = 162;
+            for (Component line : gamepadStatus()) {
+                if (y > height - 96) break;
+                gui.drawString(font, line, start, y, 0xD6D9DE);
+                y += 10;
+            }
+            var hint = font.split(text("gamepad.hint"), contentWidth);
+            for (int i = 0; i < hint.size() && y + 6 + i * 10 < height - 70; i++)
+                gui.drawString(font, hint.get(i), start, y + 6 + i * 10, 0x9AA0A6);
         }
         if (!ControlBindings.error().isEmpty()) gui.drawString(font,
                 font.plainSubstrByWidth(text("controls.save_error").getString(), contentWidth), start, height - 66, 0xFF7777);
     }
-    @Override public void onClose() { PhysicsKeys.clearClicks(); minecraft.setScreen(parent); }
+    @Override public void onClose() { GamepadInput.endCapture(); PhysicsKeys.clearClicks(); minecraft.setScreen(parent); }
 }

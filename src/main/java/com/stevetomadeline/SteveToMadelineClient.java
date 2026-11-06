@@ -4,6 +4,7 @@ import com.stevetomadeline.client.SteveToMadelineKeys;
 import com.stevetomadeline.client.ClientPlaneController;
 import com.stevetomadeline.client.ClientPhysicsController;
 import com.stevetomadeline.client.PhysicsHud;
+import com.stevetomadeline.client.input.GamepadInput;
 import com.stevetomadeline.client.input.PhysicsKeys;
 import com.stevetomadeline.client.input.MadelineSettingsScreen;
 import com.stevetomadeline.client.render.MadelineRenderer;
@@ -42,7 +43,10 @@ public final class SteveToMadelineClient {
         NeoForge.EVENT_BUS.addListener(SteveToMadelineClient::onClientTick);
         NeoForge.EVENT_BUS.addListener(SteveToMadelineClient::onLoggingOut);
         NeoForge.EVENT_BUS.addListener(SteveToMadelineClient::onPlayerClone);
-        NeoForge.EVENT_BUS.addListener((RenderFrameEvent.Pre event) -> CelesteAudio.tick());
+        NeoForge.EVENT_BUS.addListener((RenderFrameEvent.Pre event) -> {
+            CelesteAudio.tick();
+            GamepadInput.poll();
+        });
         NeoForge.EVENT_BUS.addListener((GameShuttingDownEvent event) -> CelesteAudio.close());
         NeoForge.EVENT_BUS.addListener(ClientPlaneController::updateInput);
         PlaneNetwork.setClientHandler(ClientPlaneController::receive);
@@ -61,11 +65,13 @@ public final class SteveToMadelineClient {
 
     private static void onLoggingOut(ClientPlayerNetworkEvent.LoggingOut event) {
         CelesteAudio.close();
+        GamepadInput.reset();
         ClientPlaneController.reset();
         MadelineRenderer.reset();
     }
 
     private static void onPlayerClone(ClientPlayerNetworkEvent.Clone event) {
+        GamepadInput.reset();
         ClientPlaneController.reset();
         MadelineRenderer.reset();
     }

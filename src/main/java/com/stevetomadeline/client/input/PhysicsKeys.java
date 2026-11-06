@@ -20,14 +20,19 @@ public final class PhysicsKeys {
         Minecraft mc = Minecraft.getInstance();
         return mc.player != null && mc.screen == null && mc.getOverlay() == null && mc.isWindowActive();
     }
-    private static void input(InputConstants.Key key, int action, int modifiers) {
-        if (action != InputConstants.PRESS && action != InputConstants.RELEASE) return;
-        TIMELINE.add(System.nanoTime(), key.getName(), action == InputConstants.PRESS, modifiers);
-        if (!inGame() || action != InputConstants.PRESS) return;
-        if (key.equals(com.stevetomadeline.client.SteveToMadelineKeys.OPEN_SETTINGS.getKey())) return;
-        var press = new InputTimeline.Sample(Set.of(), Set.of(new InputTimeline.Press(key.getName(), modifiers)));
+    /** Keyboard, mouse and controller edges share one timeline and one set of mode shortcuts. */
+    public static void edge(String name, boolean down, int modifiers) {
+        TIMELINE.add(System.nanoTime(), name, down, modifiers);
+        if (!down || !inGame()) return;
+        if (name.equals(com.stevetomadeline.client.SteveToMadelineKeys.OPEN_SETTINGS.getKey().getName())) return;
+        var press = new InputTimeline.Sample(Set.of(), Set.of(new InputTimeline.Press(name, modifiers)));
         if (ControlBindings.pressed(TOGGLE, press)) ClientPlaneController.toggle();
         else if (ControlBindings.pressed(TURN, press)) ClientPlaneController.requestTurn();
+    }
+    public static void device(String binding, boolean down) { edge(binding, down, 0); }
+    private static void input(InputConstants.Key key, int action, int modifiers) {
+        if (action != InputConstants.PRESS && action != InputConstants.RELEASE) return;
+        edge(key.getName(), action == InputConstants.PRESS, modifiers);
     }
     public static void key(InputEvent.Key event) {
         input(InputConstants.getKey(event.getKey(), event.getScanCode()), event.getAction(), event.getModifiers());
