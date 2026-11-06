@@ -14,7 +14,9 @@
   `xvfb-run ./gradlew build`，156 项测试通过、0 失败、0 跳过，并上传构建产物。
   同时修正了 Windows 工作区中 `gradlew` 缺少可执行位导致 Linux CI 返回 126 的问题。
 - 首个公开版本 `v0.1.0` 由 `Release` 工作流在 tag 推送后重新构建、运行全部测试并附带
-  `SHA256SUMS.txt` 发布；云端构建与本地构建的 JAR 因时间戳与换行符差异，哈希不要求相同。
+  `SHA256SUMS.txt` 发布；发布资产 `stevetomadeline-0.1.0.jar` 的 SHA256 为
+  `D4EE4804B3FE01FFDBB8793F38792721873A36AE37523AACD0C22D5CE2BBEA23`，已与校验文件比对一致。
+  云端构建与本地构建的 JAR 因时间戳与换行符差异，哈希不要求相同。
 - 未启动 Minecraft。运行期 Mixin、实际画面、手柄手感与 FMOD 音频仍以用户实机体验为准；
   自动测试不能证明这些运行期集成已通过。
 
