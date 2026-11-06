@@ -1,5 +1,23 @@
 # 开发日志
 
+## 2026-11-06 / 收尾：MIT 开源与 v0.1.0 公开发布
+
+项目按用户要求结束。原创代码改为 **MIT** 许可（仓库 `LICENSE`、`gradle.properties`、
+`neoforge.mods.toml` 以及 JAR 内的 `META-INF/licenses/stevetomadeline.txt`），
+新增 README、第三方声明、GitHub Actions 构建与 tag 发布工作流。
+
+- 公开仓库：<https://github.com/TNOTawa/SteveToMadeline>。Issues 已关闭，符合“不再接受反馈和维护”的发布说明。
+- 隐私检查：扫描全部跟踪文件、压缩测试资源与 Git 历史，未发现 API key、访问令牌、密码、邮箱或私钥。
+  清除了文档中的本机绝对路径、代理地址和隔离实例路径，并重写历史提交以清除旧版本中的同一信息；
+  重写后 P0 记录里的短哈希已同步更新。`gradle-wrapper.jar` 等二进制文件的字符匹配为误报，已人工确认。
+- 云端验证：GitHub Actions `Build` 在 Ubuntu + Xvfb + Mesa llvmpipe 上执行
+  `xvfb-run ./gradlew build`，156 项测试通过、0 失败、0 跳过，并上传构建产物。
+  同时修正了 Windows 工作区中 `gradlew` 缺少可执行位导致 Linux CI 返回 126 的问题。
+- 首个公开版本 `v0.1.0` 由 `Release` 工作流在 tag 推送后重新构建、运行全部测试并附带
+  `SHA256SUMS.txt` 发布；云端构建与本地构建的 JAR 因时间戳与换行符差异，哈希不要求相同。
+- 未启动 Minecraft。运行期 Mixin、实际画面、手柄手感与 FMOD 音频仍以用户实机体验为准；
+  自动测试不能证明这些运行期集成已通过。
+
 ## 2026-11-06 / 固定 FOV、前景透明淡出与雾修正
 
 - 修正避障收近时重新计算 FOV 的问题：投影与 CPU 剔除使用配置的参考距离，
