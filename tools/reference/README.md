@@ -14,11 +14,11 @@ and seven timers against the Java adaptation. SHA256 of the gzip fixture:
 
 To regenerate intentionally, clone the exact upstream commit under
 `build/reference-tmp/desk-madeline-current`. Compile the five C# files listed
-above with a C# compiler targeting .NET 10. On this Windows machine,
-`<NET_SDK>/csc.exe` and the managed assemblies under
-`<DOTNET_ROOT>/shared/...`
-were used as references. Execute the result with `dotnet exec --runtimeconfig
-tools/reference/ReferenceTrace.runtimeconfig.json` and pass an output JSON path.
+above with a .NET 10 C# compiler (`csc`) and the matching
+`Microsoft.NETCore.App` / `Microsoft.WindowsDesktop.App` reference assemblies
+from your local .NET installation. Execute the result with `dotnet exec
+--runtimeconfig tools/reference/ReferenceTrace.runtimeconfig.json` and pass an
+output JSON path.
 Compress the resulting bytes as gzip to the fixture path. Review a semantic
 diff of the decoded JSON before accepting a changed fixture. The .NET runtime
 and compiler versions are tooling only, not mod dependencies.

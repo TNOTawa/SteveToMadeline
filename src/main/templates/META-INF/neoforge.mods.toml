@@ -2,7 +2,7 @@
 modLoader="javafml"
 loaderVersion="${loader_version_range}"
 
-# 许可证待定：计划书要求发布前确认 Celeste 资源与参考项目的授权边界
+# MIT；第三方代码与本机游戏资源的授权边界见 THIRD_PARTY_NOTICES.md。
 license="${mod_license}"
 
 [[mods]]
@@ -11,9 +11,9 @@ version="${mod_version}"
 displayName="${mod_name}"
 authors="TNOTawa"
 description='''
-Minecraft 1.21.1 NeoForge 上的 Celeste 风格二维横版移动：R 进入/退出 Celeste 模式，Tab 旋转运动平面，
-默认连续景深与保守地形裁切；安装 WindowX 后可使用实验性的旧分层视差。已接入基础跑跳、
-八方向冲刺、墙面动作和体力，支持键盘、鼠标与手柄多键位绑定；玛德琳表现计划在后续阶段实现。
+Minecraft 1.21.1 NeoForge 上的 Celeste 风格二维横版平台跳跃：R 进入/退出横版模式，Tab 顺时针切换运动平面，
+服务端权威的 60 Hz 物理，包含冲刺、墙跳、攀爬、游泳与进阶技巧；可从本机 Celeste 安装读取角色图集与音效
+（不随模组分发商业资源），支持键盘/鼠标与手柄多键位、F8 设置界面和可选的 WindowX 分层远景。
 '''
 
 # 平面运动约束和客户端摄像机/前景处理
