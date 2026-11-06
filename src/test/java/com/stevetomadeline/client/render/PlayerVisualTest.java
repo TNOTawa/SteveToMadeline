@@ -7,6 +7,17 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class PlayerVisualTest {
+    @Test void swimmingChoosesDirectionalAnimationsAndFallsBackForMissingAssets() {
+        var sprites = bank();
+        for (String id : new String[]{"swimidle", "swimup", "swimdown"})
+            sprites.animations.put(id, new PlayerSpriteBank.Animation(List.of(id), .1f, id));
+        var s = new PhysicsState(); s.motion = PhysicsState.Motion.SWIM;
+        var animation = new PlayerAnimation();
+        animation.choose(s, sprites, EMPTY); assertEquals("swimidle", animation.id());
+        s.previousMoveY = 1; animation.choose(s, sprites, EMPTY); assertEquals("swimup", animation.id());
+        s.previousMoveY = -1; animation.choose(s, sprites, EMPTY); assertEquals("swimdown", animation.id());
+        animation.choose(s, bank(), EMPTY); assertEquals("idle", animation.id());
+    }
     private static PlayerSpriteBank bank() {
         var bank = new PlayerSpriteBank();
         for (String name : new String[]{"idle", "idlea", "idleb", "idlec", "dash", "jumpslow", "fallslow"})

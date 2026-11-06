@@ -28,7 +28,7 @@ public record PhysicsSnapshotPayload(int entityId, ResourceLocation dimension, H
         for (int value : new int[]{s.facing, s.dashes, s.forceDirection, s.wallBoostDirection, s.previousMove, s.previousMoveY,
                 s.hopWaitX, s.lastClimbMove, s.simulationFrame, s.dashSequence, s.jumpSequence, s.landingSequence}) b.writeVarInt(value);
         b.writeEnum(s.motion);
-        for (boolean value : new boolean[]{s.grounded, s.sliding, s.ducking, s.autoJump, s.dashAimPending, s.dashStartedOnGround}) b.writeBoolean(value);
+        for (boolean value : new boolean[]{s.grounded, s.sliding, s.ducking, s.autoJump, s.dashAimPending, s.dashStartedOnGround, s.nativeMovement}) b.writeBoolean(value);
     }
 
     private static PhysicsSnapshotPayload read(RegistryFriendlyByteBuf b) {
@@ -51,6 +51,7 @@ public record PhysicsSnapshotPayload(int entityId, ResourceLocation dimension, H
         s.motion = b.readEnum(PhysicsState.Motion.class);
         s.grounded = b.readBoolean(); s.sliding = b.readBoolean(); s.ducking = b.readBoolean(); s.autoJump = b.readBoolean();
         s.dashAimPending = b.readBoolean(); s.dashStartedOnGround = b.readBoolean();
+        s.nativeMovement = b.readBoolean();
         return new PhysicsSnapshotPayload(entity, dimension, heading, epoch, ack, parameters, s);
     }
     @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }

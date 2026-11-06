@@ -1,6 +1,8 @@
 package com.stevetomadeline.mixin;
 
 import com.stevetomadeline.client.CameraController;
+import com.stevetomadeline.client.CameraFog;
+import net.minecraft.world.level.material.FogType;
 import com.stevetomadeline.client.mode.RenderModeManager;
 import com.stevetomadeline.client.windowx.WindowXCompat;
 import net.minecraft.client.Camera;
@@ -14,12 +16,19 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
  * 在 2D / 2.5D 模式下把主窗口摄像机改成侧视机位，代替 WindowX 独立窗口。
  */
 @Mixin(Camera.class)
 public abstract class CameraMixin {
+    @Inject(method = "getFluidInCamera", at = @At("RETURN"), cancellable = true, require = 1)
+    private void stevetomadeline$noLiquidFog(CallbackInfoReturnable<FogType> cir) {
+        if (RenderModeManager.isCameraMode() && !WindowXCompat.isRendering() && CameraFog.liquid(cir.getReturnValue()))
+            cir.setReturnValue(FogType.NONE);
+    }
+
     private static final org.slf4j.Logger LOG = com.mojang.logging.LogUtils.getLogger();
     private static RenderModeManager.Mode LAST_LOGGED;
 

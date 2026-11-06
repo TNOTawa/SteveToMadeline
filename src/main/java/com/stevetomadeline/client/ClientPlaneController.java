@@ -7,6 +7,7 @@ import com.stevetomadeline.core.plane.PlanePlayerAccess;
 import com.stevetomadeline.core.plane.PlaneState;
 import com.stevetomadeline.core.plane.TurnAnimation;
 import com.stevetomadeline.core.physics.PhysicsPlayerAccess;
+import com.stevetomadeline.core.physics.PhysicsController;
 import com.stevetomadeline.network.PlaneActionPayload;
 import com.stevetomadeline.network.PlaneActionPayload.Action;
 import com.stevetomadeline.network.PlaneSnapshotPayload;
@@ -137,19 +138,21 @@ public final class ClientPlaneController {
         PlaneState previous = plane();
         PlaneState next = payload.active() ? new PlaneState(payload.heading(), payload.anchorX(), payload.anchorZ()) : null;
         ((PlanePlayerAccess) mc.player).stevetomadeline$setPlane(next);
-        if (!Objects.equals(previous, next)) ClientPhysicsController.onPlaneChanged();
+        if (!Objects.equals(previous, next) || payload.result() == PlaneSnapshotPayload.Result.RESET) ClientPhysicsController.onPlaneChanged();
         if (previous == null || next == null) com.stevetomadeline.client.input.PhysicsKeys.resetGrab();
         if (next != null && (payload.result() == PlaneSnapshotPayload.Result.ENTERED || payload.result() == PlaneSnapshotPayload.Result.TURNED)) {
             if (payload.result() == PlaneSnapshotPayload.Result.ENTERED) savedView = true;
-            Vec3 velocity = velocityBeforeSnap == null ? mc.player.getDeltaMovement() : velocityBeforeSnap;
-            double horizontal = (previous == null ? next : previous).horizontal(velocity.x, velocity.z);
-            mc.player.setDeltaMovement(next.heading().rightX() * horizontal, velocity.y, next.heading().rightZ() * horizontal);
-            if (previous == null) {
-                mc.player.setYRot(Heading.fromYaw(entryYaw).yaw());
-            } else {
-                double yaw = Math.toRadians(mc.player.getYRot());
-                double facing = previous.horizontal(-Math.sin(yaw), Math.cos(yaw));
-                mc.player.setYRot((facing >= 0 ? next.heading().clockwise() : next.heading().counterClockwise()).yaw());
+            if (!PhysicsController.nativeMovement(mc.player)) {
+                Vec3 velocity = velocityBeforeSnap == null ? mc.player.getDeltaMovement() : velocityBeforeSnap;
+                double horizontal = (previous == null ? next : previous).horizontal(velocity.x, velocity.z);
+                mc.player.setDeltaMovement(next.heading().rightX() * horizontal, velocity.y, next.heading().rightZ() * horizontal);
+                if (previous == null) {
+                    mc.player.setYRot(Heading.fromYaw(entryYaw).yaw());
+                } else {
+                    double yaw = Math.toRadians(mc.player.getYRot());
+                    double facing = previous.horizontal(-Math.sin(yaw), Math.cos(yaw));
+                    mc.player.setYRot((facing >= 0 ? next.heading().clockwise() : next.heading().counterClockwise()).yaw());
+                }
             }
             animation = previous != null && payload.result() == PlaneSnapshotPayload.Result.TURNED
                     ? new TurnAnimation(previous.heading().yaw(), mc.player.tickCount, Config.TURN_DURATION.get() * 20.0) : null;
@@ -183,7 +186,7 @@ public final class ClientPlaneController {
             }
             case UNSUPPORTED -> { message("unsupported"); queuedToggle = false; pendingTurn = false; }
             case BUSY -> { message("busy"); queuedToggle = false; }
-            case RESET -> { if (previous != null) message("reset"); }
+            case RESET -> { }
         }
     }
 
@@ -195,6 +198,9 @@ public final class ClientPlaneController {
             observedLevel = mc.level;
         }
         if (mc.player == null || mc.level == null) return;
+        if (plane() != null && PhysicsController.nativeMovement(mc.player)) {
+            ((PlanePlayerAccess) mc.player).stevetomadeline$setPlane(new PlaneState(plane().heading(), mc.player.getX(), mc.player.getZ()));
+        }
         if (animation != null && !animation.active(mc.player.tickCount)) {
             animation = null;
             resetVisuals();
@@ -232,11 +238,13 @@ public final class ClientPlaneController {
     public static void updateInput(MovementInputUpdateEvent event) {
         Minecraft mc = Minecraft.getInstance();
         PlaneState state = plane();
-        if (state == null || event.getEntity() != mc.player) return;
+        if (state == null || event.getEntity() != mc.player || !PhysicsController.controlsMovement(mc.player)) return;
         var input = event.getInput();
         input.leftImpulse = input.forwardImpulse = 0;
         input.left = input.right = input.up = input.down = false;
-        input.jumping = input.shiftKeyDown = false;
+        // Vanilla still needs jump edges to start creative flight or elytra flight.
+        // LivingPhysicsMixin prevents a second ground jump during Celeste physics.
+        input.shiftKeyDown = false;
         mc.player.setSprinting(false);
     }
 

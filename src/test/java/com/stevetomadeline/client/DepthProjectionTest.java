@@ -9,9 +9,20 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DepthProjectionTest {
+    @Test void collisionZoomKeepsFovAndOnlyChangesApparentObjectSize() {
+        float referenceDistance = 32;
+        Matrix4f original = DepthProjection.create(10, 1.8f, referenceDistance, .05f, 544);
+        float previousSize = 0;
+        for (float cameraDistance : new float[]{32, 16, 8, 3, 1}) {
+            Matrix4f zoom = DepthProjection.create(10, 1.8f, referenceDistance, .05f, cameraDistance + 512);
+            assertEquals(original.m00(), zoom.m00()); assertEquals(original.m11(), zoom.m11());
+            float size = zoom.transformProject(new Vector3f(0, 1, -cameraDistance)).y;
+            assertTrue(size > previousSize); previousSize = size;
+        }
+    }
     @Test
     void playerSizeIsIndependentOfTheDepthReferenceDistance() {
-        for (float distance : new float[]{16, 32, 128, 256}) {
+        for (float distance : new float[]{.1f, .5f, 1, 3, 16, 32, 128, 256}) {
             Matrix4f projection = DepthProjection.create(10, 16.0f / 9.0f, distance, 0.05f, distance + 512);
             Vector3f point = projection.transformProject(new Vector3f(0, 1, -distance));
             assertEquals(0.1f, point.y, 1e-5f);
@@ -32,7 +43,7 @@ class DepthProjectionTest {
 
     @Test
     void cullingContainsThePerspectiveCornersAndCameraCube() {
-        for (float distance : new float[]{16, 32, 256}) {
+        for (float distance : new float[]{.1f, .5f, 1, 3, 16, 32, 256}) {
             for (float halfHeight : new float[]{2, 10, 30}) {
                 for (float aspect : new float[]{0.01f, 0.5f, 1.8f, 4}) {
                     float far = distance + 512;

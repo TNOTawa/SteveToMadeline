@@ -36,7 +36,8 @@ public final class ClientPhysicsController {
         lastTick = player.tickCount;
         PhysicsFrame input = PhysicsKeys.sampleFrame();
         PhysicsSession session = PhysicsController.session(player);
-        if (waitingForEpoch || session == null || !session.active) return;
+        if (waitingForEpoch || session == null || !session.active || session.state.nativeMovement
+                || !PhysicsController.controlsMovement(player)) return;
         if (HISTORY.size() >= 120) {
             // Bounded prediction: don't accumulate seconds of unacknowledged movement.
             return;
@@ -85,6 +86,12 @@ public final class ClientPhysicsController {
         session.heading = payload.heading();
         session.state = payload.state().copy();
         HISTORY.removeIf(input -> input.sequence() <= payload.acknowledged());
+        if (session.state.nativeMovement || !PhysicsController.controlsMovement(mc.player)) {
+            HISTORY.clear();
+            ((PhysicsPlayerAccess) mc.player).stevetomadeline$setDucking(false);
+            ((com.stevetomadeline.core.plane.PlanePlayerAccess) mc.player).stevetomadeline$setTurnLocked(false);
+            return;
+        }
         MinecraftPhysicsWorld world = new MinecraftPhysicsWorld(mc.player, ClientPlaneController.plane());
         for (PhysicsInputPayload input : HISTORY) CelestePhysics.tick(session.state, input.input(), session.parameters, world);
         Vec3 before = mc.player.position();

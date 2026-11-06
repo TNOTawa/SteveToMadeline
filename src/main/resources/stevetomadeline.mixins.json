@@ -10,6 +10,7 @@
     "ServerPhysicsPacketMixin",
     "ServerPhysicsAccess",
     "EntityPhysicsAccess",
+    "EntityFluidMixin",
     "PlayerPlaneMixin",
     "EntityPlaneMovementMixin"
   ],
@@ -18,6 +19,7 @@
     "CameraMixin",
     "GameRendererMixin",
     "LevelRendererMixin",
+    "ForegroundLayerAccess",
     "ParticleEngineMixin",
     "WindowXRenderAccess",
     "WindowXRenderMixin"

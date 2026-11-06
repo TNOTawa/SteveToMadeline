@@ -9,10 +9,14 @@ import net.minecraft.core.RegistryAccess;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.resources.ResourceLocation;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import static org.junit.jupiter.api.Assertions.*;
 
 class PhysicsSnapshotTest {
-    @Test void everyReplayFieldSurvivesTheSnapshotCodec() throws Exception {
+    @ParameterizedTest
+    @EnumSource(PhysicsState.Motion.class)
+    void everyReplayFieldSurvivesTheSnapshotCodec(PhysicsState.Motion motion) throws Exception {
         var state = new PhysicsState(); int number = 1;
         for (var field : PhysicsState.class.getFields()) {
             if (Modifier.isStatic(field.getModifiers())) continue;
@@ -22,7 +26,7 @@ class PhysicsSnapshotTest {
             else if (field.getType() == boolean.class) field.setBoolean(state, true);
             number++;
         }
-        state.motion = PhysicsState.Motion.CLIMB;
+        state.motion = motion;
         var packet = new PhysicsSnapshotPayload(8, ResourceLocation.parse("minecraft:overworld"), Heading.WEST, 3, 42, PhysicsParameters.DEFAULT, state);
         var buffer = new RegistryFriendlyByteBuf(Unpooled.buffer(), RegistryAccess.EMPTY);
         try {

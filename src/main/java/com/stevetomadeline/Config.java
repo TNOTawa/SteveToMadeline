@@ -38,6 +38,27 @@ public final class Config {
             .comment("连续景深的参考距离（方块）。背景距离玩家 d 格时尺寸约为 D/(D+d)；越小远景越小，玩家尺寸不变。")
             .defineInRange("depthDistance", 32.0, 16.0, 256.0);
 
+    public static final ModConfigSpec.BooleanValue CAMERA_COLLISION = BUILDER
+            .comment("摄像头自动向玩家收近避障；忽略透明/装饰方块，半砖和楼梯按实际占用形状检测。")
+            .define("cameraCollision", true);
+
+    public static final ModConfigSpec.BooleanValue NEAR_WALL_SLICE = BUILDER
+            .comment("固定侧视下空间不足 3 格时保留镜头距离，淡出前景并补绘切片。默认开启。",
+                    "关闭后同时停用缓动过程的自动切片。保留旧配置键以兼容已保存的选择。")
+            .define("experimentalNearWallSlice", true);
+
+    public static final ModConfigSpec.BooleanValue LEGACY_SKY_FOG = BUILDER
+            .comment("旧纯 2D 天空色/雾覆盖。默认关闭，保留原版天空与雾。")
+            .define("legacySkyFog", false);
+
+    public static final ModConfigSpec.BooleanValue HIDE_OFF_PLANE_ENTITIES = BUILDER
+            .comment("旧纯 2D 平面外实体隐藏。默认关闭，正常显示生物和其他实体。")
+            .define("hideOffPlaneEntities", false);
+
+    public static final ModConfigSpec.BooleanValue FOREGROUND_SLICE = BUILDER
+            .comment("旧纯 2D 前景切片与贴面补绘。默认关闭，保留完整地形；开启后使用裁切策略。")
+            .define("foregroundSlice", false);
+
     public static final ModConfigSpec.DoubleValue FOG_START = BUILDER
             .comment("雾开始距离（方块）。")
             .defineInRange("fogStart", 96.0, 0.0, 512.0);
@@ -48,7 +69,7 @@ public final class Config {
 
     // Keep legacy keys at the root so existing configuration values are not lost.
     public static final ModConfigSpec.BooleanValue EXPERIMENTAL_RENDERING = BUILDER
-            .comment("启用实验性渲染选项。默认关闭：使用已确认的 DEPTH + ADAPTIVE，R 只在原版与 2D 之间切换。",
+            .comment("启用实验性渲染选项。默认关闭：使用 DEPTH，R 只在原版与 2D 之间切换。",
                     "关闭时忽略下方实验参数，但保留其配置值；正常缩放、景深距离、切片厚度和雾距离仍可调整。")
             .define("experimentalRendering", false);
 
@@ -99,6 +120,7 @@ public final class Config {
     }
 
     public static TerrainClippingMode terrainClippingMode() {
+        if (!FOREGROUND_SLICE.get()) return TerrainClippingMode.NONE;
         return EXPERIMENTAL_RENDERING.get() ? TERRAIN_CLIPPING.get() : TerrainClippingMode.ADAPTIVE;
     }
 

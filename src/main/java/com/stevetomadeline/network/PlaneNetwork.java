@@ -20,7 +20,7 @@ public final class PlaneNetwork {
     }
 
     public static void register(RegisterPayloadHandlersEvent event) {
-        var registrar = event.registrar("4").optional();
+        var registrar = event.registrar("6").optional();
         registrar.playToServer(PhysicsInputPayload.TYPE, PhysicsInputPayload.STREAM_CODEC, (payload, context) -> {
             if (context.player() instanceof ServerPlayer player) PhysicsController.input(player, payload);
         });

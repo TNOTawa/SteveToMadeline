@@ -4,6 +4,7 @@ import static com.stevetomadeline.core.physics.PhysicsState.Motion.*;
 
 /**
  * Static-terrain Normal/Climb/Dash port of desk-madeline Player.cs, 8404a89.
+ * Swim adapts NoelFB/Celeste's public Player.cs sample, 7fd7ae7.
  * Reference float arithmetic, timer order, axis order and integer-pixel remainders;
  * world coordinates use blocks and positive-up Y. See THIRD_PARTY_NOTICES.md.
  */
@@ -65,7 +66,11 @@ public final class CelestePhysics {
         s.refillCooldown = down(s.refillCooldown);
         s.dashAttack = down(s.dashAttack);
         s.variableJump = down(s.variableJump);
-        s.grounded = grounded(s, w);
+        s.grounded = s.motion != SWIM && grounded(s, w);
+        if (s.motion == SWIM) {
+            s.stamina = 110;
+            if (refillReady) s.dashes = p.maxDashes();
+        }
         if (s.grounded) {
             s.stamina = 110;
             s.wallSlide = 1.2f;
@@ -108,18 +113,73 @@ public final class CelestePhysics {
             case NORMAL -> normal(s, input, move, jumpAvailable, w, effects);
             case CLIMB -> climb(s, input, move, jumpAvailable, w, effects);
             case DASH -> dash(s, input, move, jumpAvailable, w, effects);
+            case SWIM -> swim(s, input, move, jumpAvailable, w, effects);
         }
         // State update precedes the dash coroutine. A first-frame super cancels aim.
         if (s.dashAimPending && previous == DASH) {
             s.dashAimPending = false;
-            if (s.motion == DASH) applyDashAim(s, input);
+            if (s.motion == DASH) {
+                applyDashAim(s, input);
+                if (w.water(s.x, s.y, s.ducking)) { s.vx *= 0.75f; s.vy *= 0.75f; }
+            }
         }
         if (!s.grounded && s.dashAttack > 0 && s.dashY == 0 && hit(s, w, 0, -3)) moveVExact(s, w, -3, true);
         if (s.vy < 0 && canStand(s, w) && !s.grounded && s.coyote <= 0 && s.motion != CLIMB) s.ducking = false;
         moveH(s, w, s.vx * 16f * STEP);
+        double beforeY = s.y;
         moveV(s, w, s.vy * 16f * STEP);
+        if (s.motion == SWIM && s.vy > 0 && s.vy <= px(60)) {
+            // Float at the surface without repeatedly switching to falling physics.
+            while (s.y > beforeY && !swimming(s, w) && !hit(s, w, 0, -1)) {
+                s.y -= PIXEL; s.vy = s.remainderY = 0;
+            }
+        }
+        // Water transitions follow movement, as in Player.Update. Refilling above
+        // therefore uses the state at the start of the frame, not a future contact.
+        if ((s.motion == NORMAL || s.motion == CLIMB) && swimming(s, w)) enterSwim(s);
         s.spriteScaleX = approach(s.spriteScaleX, 1, 1.75f * STEP);
         s.spriteScaleY = approach(s.spriteScaleY, 1, 1.75f * STEP);
+    }
+
+    private static boolean swimming(PhysicsState s, PhysicsWorld w) {
+        return w.water(s.x, s.y, s.ducking) && w.water(s.x, s.y + 8 * PIXEL, s.ducking);
+    }
+
+    private static void enterSwim(PhysicsState s) {
+        if (s.vy < 0) s.vy *= 0.5f;
+        s.motion = SWIM;
+        s.stamina = 110;
+    }
+
+    private static void swim(PhysicsState s, PhysicsInput input, int move, boolean jumpAvailable,
+                             PhysicsWorld w, PhysicsEffects effects) {
+        if (!swimming(s, w)) { enterNormal(s); return; }
+        if (canStand(s, w)) s.ducking = false;
+        if (canDash(s)) { beginDash(s, input, w); return; }
+        boolean underwater = w.water(s.x, s.y + 9 * PIXEL, s.ducking);
+        if (!underwater && s.vy <= 0 && input.grabHeld() && canStand(s, w)
+                && Math.signum(s.vx) != -s.facing && hit(s, w, s.facing * 2, 0) && !hit(s, w, 0, 1)) {
+            moveVExact(s, w, 1, false);
+            enterClimb(s, w, effects);
+            return;
+        }
+        float x = move, y = input.moveY();
+        float length = (float) Math.hypot(x, y);
+        if (length > 0) { x /= length; y /= length; }
+        float accelX = Math.abs(s.vx) > px(80) && Math.signum(s.vx) == Math.signum(x) ? px(400) : px(600);
+        s.vx = approach(s.vx, px(underwater ? 60 : 80) * x, accelX * STEP);
+        if (y == 0 && !w.water(s.x, s.y + 18 * PIXEL, s.ducking)) {
+            s.vy = approach(s.vy, px(60), px(600) * STEP);
+        } else if (y <= 0 || underwater) {
+            float accelY = Math.abs(s.vy) > px(80) && Math.signum(s.vy) == Math.signum(y) ? px(400) : px(600);
+            s.vy = approach(s.vy, px(80) * y, accelY * STEP);
+        }
+        if (!underwater && move != 0 && hit(s, w, move, 0) && !hit(s, w, move, 3)) climbHop(s, effects);
+        if (jumpAvailable && !w.water(s.x, s.y + 14 * PIXEL, s.ducking)) {
+            jump(s, move);
+            enterNormal(s);
+            effects.emit(PhysicsEffects.Event.JUMP, s);
+        }
     }
 
     private static void normal(PhysicsState s, PhysicsInput input, int move, boolean jumpAvailable, PhysicsWorld w, PhysicsEffects effects) {
@@ -175,6 +235,10 @@ public final class CelestePhysics {
             else if (canStand(s, w)) {
                 if (wallJumpCheck(s, w, 1)) wallAction(s, input, move, -1, false, effects);
                 else if (wallJumpCheck(s, w, -1)) wallAction(s, input, move, 1, false, effects);
+                else if (w.water(s.x, s.y - 2 * PIXEL, s.ducking)) {
+                    jump(s, move);
+                    effects.emit(PhysicsEffects.Event.JUMP, s);
+                }
             }
         }
     }
@@ -270,7 +334,9 @@ public final class CelestePhysics {
 
     private static void beginDash(PhysicsState s, PhysicsInput input, PhysicsWorld w) {
         boolean crouch = s.crouchDashBuffer > 0;
-        s.dashBuffer = s.crouchDashBuffer = 0; s.dashes--;
+        s.dashBuffer = s.crouchDashBuffer = 0;
+        // SwimUpdate enters Dash directly rather than the charge-spending StartDash.
+        if (s.motion != SWIM) s.dashes--;
         s.autoJump = false; s.retainedSpeed = s.wallRetention = s.wallBoost = 0; s.hopWaitX = 0;
         s.dashSequence++; s.dashStartedOnGround = s.grounded;
         s.dashCooldown = 0.2f; s.refillCooldown = 0.1f; s.dashAttack = 0.3f; s.wallSlide = 1.2f;
@@ -346,6 +412,7 @@ public final class CelestePhysics {
         s.vx = 0; s.dashAttack = 0;
     }
     private static void collideV(PhysicsState s, PhysicsWorld w, int sign) {
+        if (s.motion == SWIM) { s.vy = 0; return; }
         if (sign < 0) {
             if (s.motion == DASH && !s.dashStartedOnGround) {
                 if (s.vx <= px(0.01f)) for (int n = -1; n >= -4; n--) {

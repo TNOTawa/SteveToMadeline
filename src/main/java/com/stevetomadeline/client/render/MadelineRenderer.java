@@ -72,7 +72,7 @@ public final class MadelineRenderer {
         PhysicsSession session = PhysicsController.session(player);
         PhysicsState state = session == null ? new PhysicsState() : session.state;
         // Remote players receive 20 Hz snapshots; their visuals follow those without audio.
-        if (player != Minecraft.getInstance().player) {
+        if (player != Minecraft.getInstance().player || state.nativeMovement) {
             var world = new MinecraftPhysicsWorld(player, new PlaneState(visual.heading, player.getX(), player.getZ()));
             int steps = visual.previous == null ? 1 : Math.clamp(state.simulationFrame - visual.previous.simulationFrame, 0, 12);
             for (int i = 0; i < steps; i++) {

@@ -124,6 +124,12 @@ public final class TerrainClipping {
     }
 
     public static boolean drawSlice() {
+        return ForegroundFadeRenderer.active() || requestedSlice();
+    }
+
+    public static boolean requestedSlice() {
+        if (CameraController.nearWallSliceRequired()) return true;
+        if (!Config.FOREGROUND_SLICE.get()) return false;
         if (ClientPlaneController.turning(0)) return false;
         if (!ParallaxRenderer.usesDepthPerspective()) return true;
         return switch (Config.terrainClippingMode()) {
@@ -134,11 +140,13 @@ public final class TerrainClipping {
     }
 
     public static boolean drawSliceBlock(BlockState state) {
-        return !ParallaxRenderer.usesDepthPerspective() || Config.terrainClippingMode() == Config.TerrainClippingMode.SLICE
+        return !ParallaxRenderer.usesDepthPerspective() || CameraController.nearWallSliceRequired() || ForegroundFadeRenderer.cameraMask()
+                || Config.terrainClippingMode() == Config.TerrainClippingMode.SLICE
                 || (state.is(TERRAIN) && !state.is(PROTECTED) && !state.hasBlockEntity());
     }
 
     public static float nearPlane(double distance, double slice) {
+        if (ForegroundFadeRenderer.active()) return .05f;
         return drawSlice() ? (float) Math.max(0.05, distance - slice) : 0.05f;
     }
 

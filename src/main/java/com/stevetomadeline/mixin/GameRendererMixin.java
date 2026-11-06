@@ -8,6 +8,7 @@ import com.stevetomadeline.client.CameraController;
 import com.stevetomadeline.client.DepthProjection;
 import com.stevetomadeline.client.ParallaxRenderer;
 import com.stevetomadeline.client.TerrainClipping;
+import com.stevetomadeline.client.ForegroundFadeRenderer;
 import com.stevetomadeline.client.mode.RenderModeManager;
 import com.stevetomadeline.client.windowx.WindowXCompat;
 import net.minecraft.client.DeltaTracker;
@@ -42,7 +43,8 @@ public abstract class GameRendererMixin {
         float aspect = (float) window.getWidth() / Math.max(1, window.getHeight());
         if (ParallaxRenderer.usesDepthPerspective()) {
             float distance = (float) CameraController.distance();
-            return DepthProjection.culling(Config.ORTHO_HALF_HEIGHT.get().floatValue(), aspect, distance, distance + 512.0f);
+            return DepthProjection.culling(Config.ORTHO_HALF_HEIGHT.get().floatValue(), aspect,
+                    (float) CameraController.projectionDistance(), distance + 512.0f);
         }
         return CameraCulling.orthographic(Config.ORTHO_HALF_HEIGHT.get().floatValue(), aspect,
                 (float) (Config.cameraDistance() + 512.0));
@@ -50,7 +52,10 @@ public abstract class GameRendererMixin {
 
     @Inject(method = "renderLevel", at = @At("HEAD"), require = 1)
     private void stevetomadeline$prepareParallax(DeltaTracker tracker, CallbackInfo ci) {
+        if (WindowXCompat.isRendering()) return;
+        CameraController.beginFrame(tracker.getGameTimeDeltaPartialTick(false));
         TerrainClipping.beginFrame(tracker.getGameTimeDeltaPartialTick(false));
+        ForegroundFadeRenderer.beginFrame(tracker.getGameTimeDeltaPartialTick(false));
         ParallaxRenderer.beginFrame(tracker.getGameTimeDeltaPartialTick(false));
     }
 
@@ -84,7 +89,7 @@ public abstract class GameRendererMixin {
         }
         double perspectiveFov = Config.cameraFov();
         if (ParallaxRenderer.usesDepthPerspective()) {
-            cir.setReturnValue(DepthProjection.create(halfHeight, aspect, (float) distance, near, far));
+            cir.setReturnValue(DepthProjection.create(halfHeight, aspect, (float) CameraController.projectionDistance(), near, far));
         } else if (perspectiveFov > 0.5) {
             cir.setReturnValue(new Matrix4f().perspective(
                     (float) Math.toRadians(perspectiveFov), aspect, near, far));

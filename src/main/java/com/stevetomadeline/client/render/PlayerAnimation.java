@@ -37,6 +37,8 @@ public final class PlayerAnimation {
         if (s.dashAttack > 0) {
             if (s.grounded && s.dashY == 0 && !s.ducking && s.vx != 0 && s.previousMove == -Math.signum(s.vx)) desired = "skid";
             else desired = s.ducking ? "duck" : "dash";
+        } else if (s.motion == PhysicsState.Motion.SWIM) {
+            desired = s.previousMoveY > 0 ? "swimup" : s.previousMoveY < 0 ? "swimdown" : "swimidle";
         } else if (s.motion == PhysicsState.Motion.CLIMB) {
             if (s.lastClimbMove > 0) desired = "climbup";
             else if (s.lastClimbMove < 0) desired = "wallslide";

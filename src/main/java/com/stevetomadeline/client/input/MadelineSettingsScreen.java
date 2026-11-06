@@ -20,7 +20,7 @@ import org.lwjgl.util.tinyfd.TinyFileDialogs;
 
 public final class MadelineSettingsScreen extends Screen {
     private static final String[] TABS = {"settings.controls", "settings.gamepad", "settings.character",
-            "settings.effects", "settings.camera"};
+            "settings.effects", "settings.hud", "settings.camera"};
     private final Screen parent;
     private int page, padPage, tab, rows, padRows, start, contentWidth;
     private ControlBindings.Action listening;
@@ -41,7 +41,8 @@ public final class MadelineSettingsScreen extends Screen {
             int current = index;
             int x = start + contentWidth * index / TABS.length;
             int w = contentWidth * (index + 1) / TABS.length - contentWidth * index / TABS.length - (index < TABS.length - 1 ? 2 : 0);
-            Button entry = button(text(TABS[index]), x, 30, w, () -> {
+            Component tabLabel = text(TABS[index]);
+            Button entry = button(Component.literal(font.plainSubstrByWidth(tabLabel.getString(), w - 8)), x, 30, w, () -> {
                 if (current == TABS.length - 1) {
                     ModList.get().getModContainerById("stevetomadeline").ifPresent(container -> minecraft.setScreen(
                             new ConfigurationScreen(container, this, (context, key, element) ->
@@ -51,9 +52,11 @@ public final class MadelineSettingsScreen extends Screen {
                 tab = current; stopListening(); rebuildWidgets();
             });
             entry.active = current == TABS.length - 1 || tab != current;
+            entry.setTooltip(Tooltip.create(tabLabel));
             if (current == 1) entry.setTooltip(Tooltip.create(text("gamepad.hint")));
         }
         if (tab == 0) controls(); else if (tab == 1) gamepad(); else if (tab == 2) character(); else if (tab == 3) effects();
+        else if (tab == 4) hud();
         button(Component.translatable("gui.done"), width / 2 - 70, height - 26, 140, this::onClose);
     }
     static boolean showCameraOption(String key, boolean windowXAvailable) {
@@ -67,7 +70,7 @@ public final class MadelineSettingsScreen extends Screen {
             Button selected = button(text("controls.grab." + mode.name().toLowerCase(java.util.Locale.ROOT)),
                     start + modeLabelWidth + mode.ordinal() * modeWidth, 59, modeWidth - 2, () -> {
                     var old = ControlBindings.presentation();
-                    ControlBindings.presentation(new PresentationOptions(mode, old.soundEnabled(), old.soundVolume(), old.effectsEnabled()));
+                    ControlBindings.presentation(new PresentationOptions(mode, old.soundEnabled(), old.soundVolume(), old.effectsEnabled(), old.showStamina(), old.showDashes()));
                     rebuildWidgets();
                 });
             selected.active = mode != ControlBindings.presentation().grabMode();
@@ -187,20 +190,33 @@ public final class MadelineSettingsScreen extends Screen {
         addRenderableWidget(Checkbox.builder(text("effects.sound"), font).pos(start, 62).maxWidth(contentWidth)
                 .selected(options.soundEnabled()).onValueChange((box, value) -> {
                     var old = ControlBindings.presentation();
-                    ControlBindings.presentation(new PresentationOptions(old.grabMode(), value, old.soundVolume(), old.effectsEnabled()));
+                    ControlBindings.presentation(new PresentationOptions(old.grabMode(), value, old.soundVolume(), old.effectsEnabled(), old.showStamina(), old.showDashes()));
                 }).build());
         addRenderableWidget(new AbstractSliderButton(start, 90, contentWidth, 20, Component.empty(), options.soundVolume() / 100.0) {
             { updateMessage(); }
             @Override protected void updateMessage() { setMessage(Component.translatable("stevetomadeline.effects.volume", Math.round(value * 100))); }
             @Override protected void applyValue() {
                 var old = ControlBindings.presentation();
-                ControlBindings.presentation(new PresentationOptions(old.grabMode(), old.soundEnabled(), (int) Math.round(value * 100), old.effectsEnabled()));
+                ControlBindings.presentation(new PresentationOptions(old.grabMode(), old.soundEnabled(), (int) Math.round(value * 100), old.effectsEnabled(), old.showStamina(), old.showDashes()));
             }
         });
         addRenderableWidget(Checkbox.builder(text("effects.visual"), font).pos(start, 119).maxWidth(contentWidth)
                 .selected(options.effectsEnabled()).onValueChange((box, value) -> {
                     var old = ControlBindings.presentation();
-                    ControlBindings.presentation(new PresentationOptions(old.grabMode(), old.soundEnabled(), old.soundVolume(), value));
+                    ControlBindings.presentation(new PresentationOptions(old.grabMode(), old.soundEnabled(), old.soundVolume(), value, old.showStamina(), old.showDashes()));
+                }).build());
+    }
+    private void hud() {
+        var options = ControlBindings.presentation();
+        addRenderableWidget(Checkbox.builder(text("hud.show_stamina"), font).pos(start, 62).maxWidth(contentWidth)
+                .selected(options.showStamina()).onValueChange((box, value) -> {
+                    var old = ControlBindings.presentation();
+                    ControlBindings.presentation(new PresentationOptions(old.grabMode(), old.soundEnabled(), old.soundVolume(), old.effectsEnabled(), value, old.showDashes()));
+                }).build());
+        addRenderableWidget(Checkbox.builder(text("hud.show_dashes"), font).pos(start, 90).maxWidth(contentWidth)
+                .selected(options.showDashes()).onValueChange((box, value) -> {
+                    var old = ControlBindings.presentation();
+                    ControlBindings.presentation(new PresentationOptions(old.grabMode(), old.soundEnabled(), old.soundVolume(), old.effectsEnabled(), old.showStamina(), value));
                 }).build());
     }
     private List<Component> gamepadStatus() {

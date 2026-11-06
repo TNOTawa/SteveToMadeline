@@ -36,6 +36,7 @@ public final class SteveToMadelineClient {
         container.registerExtensionPoint(IConfigScreenFactory.class, (mod, parent) -> new MadelineSettingsScreen(parent));
         modEventBus.addListener(SteveToMadelineKeys::register);
         modEventBus.addListener(PhysicsHud::register);
+        modEventBus.addListener(com.stevetomadeline.client.ForegroundFadeRenderer::register);
         NeoForge.EVENT_BUS.addListener(PhysicsKeys::key);
         NeoForge.EVENT_BUS.addListener(PhysicsKeys::mouse);
         NeoForge.EVENT_BUS.addListener(PhysicsKeys::interaction);

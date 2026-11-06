@@ -18,7 +18,6 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
@@ -33,11 +32,11 @@ public final class ServerPlaneController {
         PlanePlayerAccess access = (PlanePlayerAccess) player;
         PlaneState previous = access.stevetomadeline$getPlane();
         if (payload.action() == PlaneActionPayload.Action.EXIT) {
-            if (previous != null && CelesteDimensions.exitPose(player) == null) {
+            if (previous != null && !PhysicsController.nativeMovement(player) && CelesteDimensions.exitPose(player) == null) {
                 send(player, payload.requestId(), Result.EXIT_BLOCKED);
                 return;
             }
-            if (PhysicsController.active(player)) {
+            if (PhysicsController.active(player) && PhysicsController.controlsMovement(player)) {
                 player.connection.teleport(player.getX(), player.getY(), player.getZ(), player.getYRot(), player.getXRot());
             }
             PhysicsController.stop(player, false);
@@ -46,7 +45,7 @@ public final class ServerPlaneController {
             return;
         }
         if (!player.connection.hasChannel(PhysicsInputPayload.TYPE) || !player.connection.hasChannel(PhysicsSnapshotPayload.TYPE)
-                || !player.level().dimension().location().equals(payload.dimension()) || !canControl(player)
+                || !player.level().dimension().location().equals(payload.dimension())
                 || player.containerMenu != player.inventoryMenu) {
             send(player, payload.requestId(), Result.UNSUPPORTED);
             return;
@@ -67,6 +66,13 @@ public final class ServerPlaneController {
             return;
         }
         Heading heading = previous == null ? payload.heading() : previous.heading().clockwise();
+        if (PhysicsController.nativeMovement(player)) {
+            access.stevetomadeline$setPlane(new PlaneState(heading, player.getX(), player.getZ()));
+            access.stevetomadeline$setLastTurnTick(tick);
+            send(player, payload.requestId(), previous == null ? Result.ENTERED : Result.TURNED);
+            PhysicsController.start(player, previous != null);
+            return;
+        }
         PlaneState next = PlaneState.centered(heading, player.getX(), player.getZ());
         Vec3 offset = new Vec3(next.anchorX() - player.getX(), 0, next.anchorZ() - player.getZ());
         AABB enteringBox = previous == null ? CelesteDimensions.ACTIVE.makeBoundingBox(player.position()) : player.getBoundingBox();
@@ -92,11 +98,6 @@ public final class ServerPlaneController {
         player.setKnownMovement(new Vec3(heading.rightX() * knownHorizontal, known.y, heading.rightZ() * knownHorizontal));
         send(player, payload.requestId(), previous == null ? Result.ENTERED : Result.TURNED);
         PhysicsController.start(player, previous != null);
-    }
-
-    private static boolean canControl(Player player) {
-        return player.isAlive() && !player.isSpectator() && !player.isPassenger() && !player.isSleeping()
-                && !player.isFallFlying() && !player.getAbilities().flying && !player.isInWater() && !player.isInLava();
     }
 
     private static void send(ServerPlayer player, int requestId, Result result) {
@@ -129,23 +130,30 @@ public final class ServerPlaneController {
         }
     }
 
-    public static void reset(ServerPlayer player) {
-        PhysicsController.stop(player, !player.isAlive());
+    public static void followPosition(ServerPlayer player) {
         PlanePlayerAccess access = (PlanePlayerAccess) player;
-        if (access.stevetomadeline$getPlane() != null) {
-            access.stevetomadeline$setPlane(null);
-            send(player, 0, Result.RESET);
+        PlaneState previous = access.stevetomadeline$getPlane();
+        if (previous != null && !previous.aligned(player.getX(), player.getZ())) {
+            access.stevetomadeline$setPlane(new PlaneState(previous.heading(), player.getX(), player.getZ()));
         }
+    }
+
+    public static void rebase(ServerPlayer player) {
+        PlanePlayerAccess access = (PlanePlayerAccess) player;
+        PlaneState previous = access.stevetomadeline$getPlane();
+        if (previous == null) return;
+        access.stevetomadeline$setPlane(new PlaneState(previous.heading(), player.getX(), player.getZ()));
+        send(player, 0, Result.RESET);
+        PhysicsController.start(player, false);
     }
 
     @SubscribeEvent
     public static void tick(PlayerTickEvent.Pre event) {
         Player player = event.getEntity();
         PlaneState state = ((PlanePlayerAccess) player).stevetomadeline$getPlane();
-        if (state == null) return;
-        if (player instanceof ServerPlayer serverPlayer && (!canControl(player) || !state.aligned(player.getX(), player.getZ()))) {
-            // External teleports or unsupported poses release the mode; never pull the player back.
-            reset(serverPlayer);
+        if (state == null || !PhysicsController.controlsMovement(player)) return;
+        if (player instanceof ServerPlayer serverPlayer && !state.aligned(player.getX(), player.getZ())) {
+            rebase(serverPlayer);
             return;
         }
         Vec3 velocity = player.getDeltaMovement();
@@ -153,21 +161,25 @@ public final class ServerPlaneController {
     }
 
     @SubscribeEvent
-    public static void death(LivingDeathEvent event) {
-        if (event.getEntity() instanceof ServerPlayer player) reset(player);
+    public static void clonePlayer(PlayerEvent.Clone event) {
+        PlaneState previous = ((PlanePlayerAccess) event.getOriginal()).stevetomadeline$getPlane();
+        if (previous != null) {
+            Player player = event.getEntity();
+            ((PlanePlayerAccess) player).stevetomadeline$setPlane(new PlaneState(previous.heading(), player.getX(), player.getZ()));
+        }
     }
 
     @SubscribeEvent
     public static void dimension(PlayerEvent.PlayerChangedDimensionEvent event) {
-        if (event.getEntity() instanceof ServerPlayer player) reset(player);
+        if (event.getEntity() instanceof ServerPlayer player) rebase(player);
     }
 
     @SubscribeEvent
     public static void respawn(PlayerEvent.PlayerRespawnEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
             PhysicsController.stop(player, true);
-            ((PlanePlayerAccess) player).stevetomadeline$setPlane(null);
-            send(player, 0, Result.RESET);
+            if (PhysicsController.plane(player) != null) rebase(player);
+            else send(player, 0, Result.RESET);
         }
     }
 

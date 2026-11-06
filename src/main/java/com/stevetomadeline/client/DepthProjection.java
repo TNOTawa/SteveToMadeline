@@ -2,7 +2,7 @@ package com.stevetomadeline.client;
 
 import org.joml.Matrix4f;
 
-/** One continuous projection, calibrated to the old orthographic scale at the player plane. */
+/** FOV uses the configured reference distance, never the collision-adjusted camera distance. */
 public final class DepthProjection {
     private DepthProjection() {
     }

@@ -20,6 +20,10 @@ import net.minecraft.client.renderer.texture.TextureAtlas;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.tags.FluidTags;
+import com.mojang.blaze3d.shaders.FogShape;
+import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.level.material.FogType;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.LightLayer;
@@ -44,7 +48,7 @@ import java.util.List;
  * <p>背景保持普通正交相机：原版天空盒、昼夜、雾效全部保留；本类只负责在玩家所在轴上
  * 叠加一层“方块朝向摄像机那一面”的贴图，空气格透出后方真实世界。
  *
- * <p>另外：摄像机模式下隐藏准星与手持物品；雾色固定为当前天空色，避免入水时突变。
+ * <p>另外：摄像机模式下隐藏准星与手持物品，减弱距离雾并移除水/岩浆浓雾。
  */
 @EventBusSubscriber(modid = SteveToMadeline.MODID, value = Dist.CLIENT)
 public final class CameraRenderHandler {
@@ -56,6 +60,7 @@ public final class CameraRenderHandler {
 
     @SubscribeEvent
     public static void onRenderStage(RenderLevelStageEvent event) {
+        if (ForegroundFadeRenderer.foregroundPass()) return;
         if (WindowXCompat.isRendering()) {
             return;
         }
@@ -67,6 +72,7 @@ public final class CameraRenderHandler {
             ParallaxRenderer.composite();
         } else if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) {
             drawForegroundSlice(partialTick);
+            ForegroundFadeRenderer.renderRemovedTerrain(event);
         }
     }
 
@@ -93,7 +99,8 @@ public final class CameraRenderHandler {
 
         // 切片平面：玩家所在轴，略微朝远处偏移，避免与玩家自身深度打架。
         double slice = Config.SLICE_HALF_THICKNESS.get();
-        double planeOffset = slice * 0.5;
+        boolean cameraMask = CameraController.nearWallSliceRequired() || ForegroundFadeRenderer.cameraMask();
+        double planeOffset = cameraMask ? -Math.min(.26, slice * .5) : slice * .5;
         // 正交伪视差：前景层按移动速度做一个极小的横向超前，背景保持原速。
         Vec3 velocity = player.getDeltaMovement();
         double parallax = ParallaxRenderer.enabled() ? 0.0
@@ -113,7 +120,7 @@ public final class CameraRenderHandler {
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
         RenderSystem.enableDepthTest();
-        RenderSystem.depthMask(false);
+        RenderSystem.depthMask(cameraMask);
         RenderSystem.disableCull();
         RenderSystem.setShader(GameRenderer::getPositionTexColorShader);
         RenderSystem.setShaderTexture(0, TextureAtlas.LOCATION_BLOCKS);
@@ -132,6 +139,8 @@ public final class CameraRenderHandler {
                 if (state.isAir() || !TerrainClipping.drawSliceBlock(state)) {
                     continue;
                 }
+                var maskShape = cameraMask ? CameraObstruction.shape(state, level, pos) : null;
+                if (cameraMask && maskShape.isEmpty()) continue;
                 TextureAtlasSprite sprite = faceSprite(mc, state, face);
                 if (sprite == null) {
                     continue;
@@ -142,26 +151,31 @@ public final class CameraRenderHandler {
                 float green = ((tint >> 8) & 0xFF) / 255.0f * bright;
                 float blue = (tint & 0xFF) / 255.0f * bright;
 
-                double x0 = horizontal - camera.x + right.x * parallax;
-                double x1 = x0 + 1.0;
-                double y0 = vertical - camera.y;
-                double y1 = y0 + 1.0;
-                if (zPlane) {
-                    double z = planeCoordinate - camera.z + right.z * parallax;
-                    tileVertex(buffer, x0, y0, z, sprite.getU0(), sprite.getV1(), red, green, blue);
-                    tileVertex(buffer, x0, y1, z, sprite.getU0(), sprite.getV0(), red, green, blue);
-                    tileVertex(buffer, x1, y1, z, sprite.getU1(), sprite.getV0(), red, green, blue);
-                    tileVertex(buffer, x1, y0, z, sprite.getU1(), sprite.getV1(), red, green, blue);
-                } else {
-                    double x = planeCoordinate - camera.x + right.x * parallax;
-                    double z0 = horizontal - camera.z + right.z * parallax;
-                    double z1 = z0 + 1.0;
-                    tileVertex(buffer, x, y0, z0, sprite.getU0(), sprite.getV1(), red, green, blue);
-                    tileVertex(buffer, x, y1, z0, sprite.getU0(), sprite.getV0(), red, green, blue);
-                    tileVertex(buffer, x, y1, z1, sprite.getU1(), sprite.getV0(), red, green, blue);
-                    tileVertex(buffer, x, y0, z1, sprite.getU1(), sprite.getV1(), red, green, blue);
+                var rectangles = cameraMask ? maskShape.toAabbs() : List.of(new net.minecraft.world.phys.AABB(0, 0, 0, 1, 1, 1));
+                for (var rectangle : rectangles) {
+                    double low = zPlane ? rectangle.minX : rectangle.minZ;
+                    double high = zPlane ? rectangle.maxX : rectangle.maxZ;
+                    double x0 = horizontal - camera.x + right.x * parallax + low;
+                    double x1 = horizontal - camera.x + right.x * parallax + high;
+                    double y0 = vertical - camera.y + rectangle.minY;
+                    double y1 = vertical - camera.y + rectangle.maxY;
+                    if (zPlane) {
+                        double z = planeCoordinate - camera.z + right.z * parallax;
+                        tileVertex(buffer, x0, y0, z, sprite.getU0(), sprite.getV1(), red, green, blue);
+                        tileVertex(buffer, x0, y1, z, sprite.getU0(), sprite.getV0(), red, green, blue);
+                        tileVertex(buffer, x1, y1, z, sprite.getU1(), sprite.getV0(), red, green, blue);
+                        tileVertex(buffer, x1, y0, z, sprite.getU1(), sprite.getV1(), red, green, blue);
+                    } else {
+                        double x = planeCoordinate - camera.x + right.x * parallax;
+                        double z0 = horizontal - camera.z + right.z * parallax + low;
+                        double z1 = horizontal - camera.z + right.z * parallax + high;
+                        tileVertex(buffer, x, y0, z0, sprite.getU0(), sprite.getV1(), red, green, blue);
+                        tileVertex(buffer, x, y1, z0, sprite.getU0(), sprite.getV0(), red, green, blue);
+                        tileVertex(buffer, x, y1, z1, sprite.getU1(), sprite.getV0(), red, green, blue);
+                        tileVertex(buffer, x, y0, z1, sprite.getU1(), sprite.getV1(), red, green, blue);
+                    }
+                    drawn++;
                 }
-                drawn++;
             }
         }
 
@@ -228,20 +242,30 @@ public final class CameraRenderHandler {
                 || (WindowXCompat.isRendering() && !WindowXCompat.isRenderingBackground())) {
             return;
         }
-        float start = (float) Config.FOG_START.get().doubleValue();
-        float end = (float) Config.FOG_END.get().doubleValue();
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level == null || mc.player == null) return;
+        var camera = event.getCamera();
+        var fluid = mc.level.getFluidState(camera.getBlockPosition());
+        boolean submerged = CameraFog.liquid(event.getType()) || ((fluid.is(FluidTags.WATER) || fluid.is(FluidTags.LAVA))
+                && camera.getPosition().y < camera.getBlockPosition().getY() + fluid.getHeight(mc.level, camera.getBlockPosition()));
+        if (!submerged && (event.getType() == FogType.POWDER_SNOW || mc.player.hasEffect(MobEffects.BLINDNESS)
+                || mc.player.hasEffect(MobEffects.DARKNESS))) return;
+        var range = CameraFog.range(CameraController.distance(), mc.options.getEffectiveRenderDistance(), submerged);
+        float start = !submerged && Config.LEGACY_SKY_FOG.get() ? Config.FOG_START.get().floatValue() : range.start();
+        float end = !submerged && Config.LEGACY_SKY_FOG.get() ? Config.FOG_END.get().floatValue() : range.end();
         if (end <= start + 1.0f) {
             return;
         }
         event.setNearPlaneDistance(start);
         event.setFarPlaneDistance(end);
+        event.setFogShape(FogShape.CYLINDER);
         event.setCanceled(true);
     }
 
     /** 摄像机模式下固定雾色为当前天空色，避免入水/岩浆时天空盒突变。 */
     @SubscribeEvent
     public static void onFogColor(ViewportEvent.ComputeFogColor event) {
-        if (!RenderModeManager.isCameraMode()
+        if (!RenderModeManager.isCameraMode() || !Config.LEGACY_SKY_FOG.get()
                 || (WindowXCompat.isRendering() && !WindowXCompat.isRenderingBackground())) {
             return;
         }

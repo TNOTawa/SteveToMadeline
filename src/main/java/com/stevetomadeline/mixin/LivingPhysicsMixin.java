@@ -37,6 +37,6 @@ public abstract class LivingPhysicsMixin {
 
     @Inject(method = "jumpFromGround", at = @At("HEAD"), cancellable = true, require = 1)
     private void stevetomadeline$preventDuplicateJump(CallbackInfo ci) {
-        if ((Object) this instanceof Player player && PhysicsController.plane(player) != null) ci.cancel();
+        if ((Object) this instanceof Player player && PhysicsController.controlsMovement(player)) ci.cancel();
     }
 }

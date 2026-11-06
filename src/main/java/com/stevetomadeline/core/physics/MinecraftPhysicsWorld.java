@@ -2,6 +2,9 @@ package com.stevetomadeline.core.physics;
 
 import com.stevetomadeline.core.plane.PlaneState;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.BlockGetter;
+import java.util.function.Predicate;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -33,6 +36,22 @@ public final class MinecraftPhysicsWorld implements PhysicsWorld {
 
     @Override public boolean solid(double x, double y, boolean ducking) {
         return solid(CelesteDimensions.forPose(ducking).makeBoundingBox(position(x, y)));
+    }
+
+    @Override public boolean water(double x, double y, boolean ducking) {
+        return containsFluid(player.level(), CelesteDimensions.forPose(ducking).makeBoundingBox(position(x, y)),
+                player.level()::hasChunkAt);
+    }
+
+    static boolean containsFluid(BlockGetter level, AABB bounds, Predicate<BlockPos> loaded) {
+        AABB box = bounds.deflate(1.0e-7);
+        for (BlockPos pos : BlockPos.betweenClosed(BlockPos.containing(box.minX, box.minY, box.minZ),
+                BlockPos.containing(box.maxX, box.maxY, box.maxZ))) {
+            if (!loaded.test(pos)) continue;
+            var fluid = level.getFluidState(pos);
+            if (!fluid.isEmpty() && pos.getY() + fluid.getHeight(level, pos) > box.minY) return true;
+        }
+        return false;
     }
 
     @Override public boolean solidPoint(double x, double y) {

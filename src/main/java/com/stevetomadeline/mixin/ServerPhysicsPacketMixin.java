@@ -16,7 +16,7 @@ public abstract class ServerPhysicsPacketMixin {
 
     @Inject(method = "handleMovePlayer", at = @At("HEAD"), cancellable = true, require = 1)
     private void stevetomadeline$authoritativePosition(ServerboundMovePlayerPacket packet, CallbackInfo ci) {
-        if (player.serverLevel().getServer().isSameThread() && PhysicsController.active(player)) {
+        if (player.serverLevel().getServer().isSameThread() && PhysicsController.active(player) && PhysicsController.controlsMovement(player)) {
             // Position and onGround come exclusively from the server simulation.
             // Rotation remains useful for interaction and is independently validated.
             float yaw = packet.getYRot(player.getYRot()), pitch = packet.getXRot(player.getXRot());

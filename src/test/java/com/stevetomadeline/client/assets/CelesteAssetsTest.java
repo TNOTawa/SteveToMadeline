@@ -30,7 +30,7 @@ class CelesteAssetsTest {
             x += image.width() + 2; row = Math.max(row, image.height());
         }
         assertTrue(y + row <= 8192, "all effect and player frames fit in the dynamic atlas");
-        for (String id : new String[]{"idle", "runfast", "dash", "jumpfast", "fallslow", "wallslide", "climbup", "duck"}) {
+        for (String id : new String[]{"idle", "runfast", "dash", "jumpfast", "fallslow", "wallslide", "climbup", "duck", "swimidle", "swimup", "swimdown"}) {
             assertTrue(bank.animations.containsKey(id), id);
             for (String frame : bank.animations.get(id).frames()) assertNotNull(images.get(frame), frame);
         }

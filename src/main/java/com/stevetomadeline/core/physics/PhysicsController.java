@@ -29,10 +29,18 @@ public final class PhysicsController {
     public static boolean active(Player player) {
         return plane(player) != null && session(player) != null && session(player).active;
     }
+    /** Mode ownership survives actions whose movement is owned by Minecraft. */
+    public static boolean nativeMovement(Player player) {
+        return !player.isAlive() || player.isPassenger() || player.isSleeping() || player.isFallFlying()
+                || player.isSpectator() || player.getAbilities().flying || player.isAutoSpinAttack();
+    }
+    public static boolean controlsMovement(Player player) {
+        return plane(player) != null && !nativeMovement(player);
+    }
     public static void setClientTravel(Consumer<Player> handler) { clientTravel = handler; }
 
     public static boolean travel(Player player) {
-        if (plane(player) == null) return false;
+        if (!controlsMovement(player)) return false;
         if (player.level().isClientSide()) clientTravel.accept(player);
         return true;
     }
@@ -45,6 +53,7 @@ public final class PhysicsController {
             ((PhysicsPlayerAccess) player).stevetomadeline$setPhysics(session);
         }
         var state = session.state;
+        if (nativeMovement(player)) turning = false;
         session.parameters = PhysicsConfig.parameters();
         if (fresh) state.dashes = session.parameters.maxDashes();
         else state.dashes = Math.min(state.dashes, session.parameters.maxDashes());
@@ -60,6 +69,7 @@ public final class PhysicsController {
         state.x = plane.horizontal(player.getX(), player.getZ());
         state.y = player.getY();
         state.grounded = CelestePhysics.grounded(state, new MinecraftPhysicsWorld(player, plane));
+        state.nativeMovement = nativeMovement(player);
         if (state.grounded && state.refillCooldown <= 0) { state.dashes = session.parameters.maxDashes(); state.stamina = 110; }
         session.heading = plane.heading();
         session.active = true;
@@ -82,7 +92,7 @@ public final class PhysicsController {
     }
 
     public static void knockedBack(Player player) {
-        if (!(player instanceof ServerPlayer server) || !active(player)) return;
+        if (!(player instanceof ServerPlayer server) || !active(player) || !controlsMovement(player)) return;
         PhysicsSession session = session(player);
         Vec3 velocity = player.getDeltaMovement();
         session.state.clearAction();
@@ -94,7 +104,7 @@ public final class PhysicsController {
 
     public static void input(ServerPlayer player, PhysicsInputPayload payload) {
         PhysicsSession session = session(player);
-        if (!active(player) || payload.epoch() != session.epoch || payload.sequence() <= session.lastReceived
+        if (!active(player) || !controlsMovement(player) || payload.epoch() != session.epoch || payload.sequence() <= session.lastReceived
                 || payload.sequence() - (long) session.lastReceived > 128 || session.inputs.size() >= 10) return;
         session.lastReceived = payload.sequence();
         session.inputs.addLast(payload);
@@ -113,13 +123,32 @@ public final class PhysicsController {
             }
             return;
         }
-        if (!player.isAlive() || player.isInWater() || player.isInLava() || player.getAbilities().flying
-                || player.isPassenger() || player.isSleeping() || player.isFallFlying() || player.isSpectator()) {
-            ServerPlaneController.reset(player);
+        if (nativeMovement(player)) {
+            if (!session.state.nativeMovement) session.state.clearAction();
+            session.state.nativeMovement = true;
+            session.inputs.clear();
+            session.held = PhysicsInput.NONE;
+            ServerPlaneController.followPosition(player);
+            var plane = plane(player);
+            session.state.x = plane.horizontal(player.getX(), player.getZ());
+            session.state.y = player.getY();
+            session.state.vx = (float) (plane.horizontal(player.getDeltaMovement().x, player.getDeltaMovement().z) * 20);
+            session.state.vy = (float) (player.getDeltaMovement().y * 20);
+            session.state.grounded = player.onGround();
+            double yaw = Math.toRadians(player.getYRot());
+            session.state.facing = plane.horizontal(-Math.sin(yaw), Math.cos(yaw)) >= 0 ? 1 : -1;
+            session.state.dashCooldown = Math.max(0, session.state.dashCooldown - .05f);
+            session.state.refillCooldown = Math.max(0, session.state.refillCooldown - .05f);
+            session.state.simulationFrame += 3;
+            ((PlanePlayerAccess) player).stevetomadeline$setTurnLocked(false);
+            ((PhysicsPlayerAccess) player).stevetomadeline$setDucking(false);
+            remember(player, session);
+            snapshot(player, session);
             return;
         }
-        if (player.position().distanceToSqr(new Vec3(session.lastX, session.lastY, session.lastZ)) > 1.0e-8) {
-            ServerPlaneController.reset(player);
+        if (session.state.nativeMovement
+                || player.position().distanceToSqr(new Vec3(session.lastX, session.lastY, session.lastZ)) > 1.0e-8) {
+            ServerPlaneController.rebase(player);
             return;
         }
         ServerPhysicsAccess connection = (ServerPhysicsAccess) player.connection;
@@ -162,7 +191,8 @@ public final class PhysicsController {
         player.setYRot((state.facing > 0 ? plane.heading().clockwise() : plane.heading().counterClockwise()).yaw());
         ((PlanePlayerAccess) player).stevetomadeline$setTurnLocked(state.locksTurn());
         if (effects && player instanceof ServerPlayer server) {
-            if (PhysicsConfig.FALL_DAMAGE.get()) server.doCheckFallDamage(movement.x, movement.y, movement.z, groundedNow);
+            if (PhysicsConfig.FALL_DAMAGE.get() && !new MinecraftPhysicsWorld(player, plane).water(state.x, state.y, state.ducking))
+                server.doCheckFallDamage(movement.x, movement.y, movement.z, groundedNow);
             else server.resetFallDistance();
             ((EntityPhysicsAccess) player).stevetomadeline$insideBlocks();
             if (groundedNow) {

@@ -82,6 +82,7 @@ class ReferenceTraceTest {
                 assertEquals(expected.get("dashes").getAsInt(), state.dashes, context + " dashes");
                 int motion = switch (state.motion) {
                     case NORMAL -> 0; case CLIMB -> 1; case DASH -> 2;
+                    case SWIM -> throw new AssertionError("Dry reference scene entered water: " + context);
                 };
                 assertEquals(expected.get("motion").getAsInt(), motion, context + " motion");
                 assertEquals(expected.get("ducking").getAsBoolean(), state.ducking, context + " ducking");
