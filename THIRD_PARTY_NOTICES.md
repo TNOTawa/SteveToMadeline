@@ -43,8 +43,9 @@ all non-`LAYERED` rendering do not require WindowX at runtime.
 
 The JAR's bundled `neoforge.mods.toml` declares the MIT license, while the
 Modrinth project page lists Apache-2.0. Copyright and licensing remain with its
-author. Remove `libs/windowx-2.2.0-Beta2-1.21.1-NeoForge.jar` and the
-`client/windowx` / `WindowX*` sources if your fork does not want to carry it.
+author. Remove `libs/windowx-2.2.0-Beta2-1.21.1-NeoForge.jar`, the
+`client/windowx` / `WindowX*` sources, and the matching `build.gradle` entry if your
+fork does not want to carry it.
 
 ## Celeste game assets
 

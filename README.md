@@ -214,7 +214,7 @@
 | `cameraDistance` | `8.0` | [实验] 相机站位距离（0.5–128） |
 | `layeredParallax` | `true` | [实验] 深度效果开关 |
 | `parallaxMode` | `DEPTH` | [实验] `DEPTH` / `LAYERED`；`LAYERED` 需要 WindowX |
-| `terrainClipping` | `ADAPTIVE` | [实验] `ADAPTIVE` / `SLICE` / `NONE` |
+| `terrainClipping` | `ADAPTIVE` | [实验] `ADAPTIVE` / `SLICE` / `NONE`；仅在 `foregroundSlice = true` 时生效 |
 | `parallaxRatio` | `0.4` | [实验] 仅 `LAYERED`：远景水平跟随比例（0.2–0.8） |
 | `parallaxStrength` | `0.0` | [实验] 旧速度伪视差强度（0–8） |
 | `enableIsometric` | `false` | [实验] 2.5D 彩蛋视角 |
@@ -325,7 +325,8 @@ Windows：
 
 - **desk-madeline**（solstice23，MIT）：动作常量、Normal/Climb/Dash 结构、输入规则与表现层参考。
 - **Celeste 公开源码样本**（Noel Berry，MIT）：游泳参数与水面判定参考；不覆盖商业游戏资源。
-- **WindowX**（XuTrain）：可选第三方编译依赖，权利归其作者，不属本项目 MIT 授权范围。
+- **WindowX**（XuTrain）：可选第三方编译依赖；仓库内含未修改的第三方 JAR，权利归其作者，
+  不属本项目 MIT 授权范围。
 - 本项目**不包含** Celeste、desk-madeline、Cateline 或其他第三方模组的美术、音频和字体资源。
 
 完整归属、许可证文本与“不包含商业资源”的说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
