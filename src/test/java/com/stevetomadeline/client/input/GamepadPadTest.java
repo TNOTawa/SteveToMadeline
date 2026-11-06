@@ -78,6 +78,49 @@ class GamepadPadTest {
                 poll(pad, new boolean[GamepadBinding.BUTTONS.size()], axes));
     }
 
+    @Test void aRawPollNeverReleasesStandardButtons() {
+        GamepadPad pad = new GamepadPad();
+        boolean[] buttons = new boolean[GamepadBinding.BUTTONS.size()];
+        buttons[0] = true;
+        poll(pad, buttons, rest());
+        assertTrue(pad.down().contains("gamepad:button:a"));
+        List<Edge> raw = new ArrayList<>();
+        pad.raw(new boolean[0], 0, new float[0], 0, DEADZONE, (binding, down) -> raw.add(new Edge(binding, down)));
+        assertEquals(List.of(), raw);
+        assertTrue(pad.down().contains("gamepad:button:a"));
+        assertEquals(List.of(), poll(pad, buttons, rest()));
+    }
+
+    @Test void onePressSurvivesTheStandardAndRawPassesOfEveryFrame() {
+        GamepadPad pad = new GamepadPad();
+        List<Edge> edges = new ArrayList<>();
+        GamepadPad.Sink sink = (binding, down) -> edges.add(new Edge(binding, down));
+        boolean[] buttons = new boolean[GamepadBinding.BUTTONS.size()];
+        buttons[0] = true;
+        for (int frame = 0; frame < 6; frame++) {
+            pad.standard(buttons, rest(), DEADZONE, sink);
+            pad.raw(new boolean[0], 0, new float[0], 0, DEADZONE, sink);
+        }
+        assertEquals(List.of(new Edge("gamepad:button:a", true)), edges);
+        buttons[0] = false;
+        pad.standard(buttons, rest(), DEADZONE, sink);
+        pad.raw(new boolean[0], 0, new float[0], 0, DEADZONE, sink);
+        assertEquals(List.of(new Edge("gamepad:button:a", true), new Edge("gamepad:button:a", false)), edges);
+    }
+
+    @Test void aStandardPollNeverReleasesRawButtons() {
+        GamepadPad pad = new GamepadPad();
+        boolean[] rawButtons = new boolean[4];
+        rawButtons[1] = true;
+        pad.raw(rawButtons, 4, new float[0], 0, DEADZONE, (binding, down) -> { });
+        assertTrue(pad.down().contains("joystick:button:1"));
+        List<Edge> standard = new ArrayList<>();
+        pad.standard(new boolean[GamepadBinding.BUTTONS.size()], rest(), DEADZONE,
+                (binding, down) -> standard.add(new Edge(binding, down)));
+        assertEquals(List.of(), standard);
+        assertTrue(pad.down().contains("joystick:button:1"));
+    }
+
     @Test void disconnectOrFocusLossReleasesEveryHeldBinding() {
         GamepadPad pad = new GamepadPad();
         boolean[] buttons = new boolean[GamepadBinding.BUTTONS.size()];

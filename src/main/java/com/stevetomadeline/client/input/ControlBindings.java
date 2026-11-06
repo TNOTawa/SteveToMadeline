@@ -13,37 +13,57 @@ import net.neoforged.fml.loading.FMLPaths;
 import org.lwjgl.glfw.GLFW;
 
 /**
- * Four binding slots per action. Slots accept keyboard, mouse or controller entries, so the same
- * conflict and reserve checks apply to every device. Controller defaults only fill empty slots
- * when a version-one file is upgraded, which never overwrites an explicit choice.
+ * Four keyboard/mouse slots and four controller slots per action, stored and edited separately.
+ * Both groups share the same conflict and reserve rules inside their own device family, so a
+ * keyboard key and a controller button never shadow each other.
  */
 public final class ControlBindings {
     public enum Action {
-        LEFT("left", "key.keyboard.a", "gamepad:axis:leftx:negative", "gamepad:button:dpleft"),
-        RIGHT("right", "key.keyboard.d", "gamepad:axis:leftx:positive", "gamepad:button:dpright"),
-        UP("up", "key.keyboard.w", "gamepad:axis:lefty:negative", "gamepad:button:dpup"),
-        DOWN("down", "key.keyboard.s", "gamepad:axis:lefty:positive", "gamepad:button:dpdown"),
-        JUMP("jump", "key.keyboard.space", "key.keyboard.c", "gamepad:button:a"),
-        DASH("dash", "key.keyboard.x", "gamepad:button:x"),
-        GRAB("grab", "key.keyboard.left.shift", "key.keyboard.z", "key.keyboard.v", "gamepad:axis:triggerright:positive"),
-        CROUCH_DASH("crouch_dash"),
-        TOGGLE("toggle_celeste_mode", "key.keyboard.r", "gamepad:button:start"),
-        TURN("turn_plane", "key.keyboard.tab", "gamepad:button:leftbumper");
+        LEFT("left",
+                new String[]{"key.keyboard.a", "", "", ""},
+                new String[]{"gamepad:axis:leftx:negative", "gamepad:button:dpleft", "", ""}),
+        RIGHT("right",
+                new String[]{"key.keyboard.d", "", "", ""},
+                new String[]{"gamepad:axis:leftx:positive", "gamepad:button:dpright", "", ""}),
+        UP("up",
+                new String[]{"key.keyboard.w", "", "", ""},
+                new String[]{"gamepad:axis:lefty:negative", "gamepad:button:dpup", "", ""}),
+        DOWN("down",
+                new String[]{"key.keyboard.s", "", "", ""},
+                new String[]{"gamepad:axis:lefty:positive", "gamepad:button:dpdown", "", ""}),
+        JUMP("jump",
+                new String[]{"key.keyboard.space", "key.keyboard.c", "", ""},
+                new String[]{"gamepad:button:a", "", "", ""}),
+        DASH("dash",
+                new String[]{"key.keyboard.x", "", "", ""},
+                new String[]{"gamepad:button:x", "", "", ""}),
+        GRAB("grab",
+                new String[]{"key.keyboard.left.shift", "key.keyboard.z", "key.keyboard.v", ""},
+                new String[]{"gamepad:axis:triggerright:positive", "", "", ""}),
+        CROUCH_DASH("crouch_dash",
+                new String[]{"", "", "", ""},
+                new String[]{"", "", "", ""}),
+        TOGGLE("toggle_celeste_mode",
+                new String[]{"key.keyboard.r", "", "", ""},
+                new String[]{"gamepad:button:start", "", "", ""}),
+        TURN("turn_plane",
+                new String[]{"key.keyboard.tab", "", "", ""},
+                new String[]{"gamepad:button:leftbumper", "", "", ""});
 
         public final String id;
-        public final String[] defaults;
-        Action(String id, String... bindings) {
+        public final String[] keyboard, controller;
+        Action(String id, String[] keyboard, String[] controller) {
             this.id = id;
-            defaults = new String[SLOTS];
-            Arrays.fill(defaults, "");
-            for (int i = 0; i < Math.min(bindings.length, SLOTS); i++) defaults[i] = bindings[i];
+            this.keyboard = keyboard.clone();
+            this.controller = controller.clone();
         }
         public Component label() { return Component.translatable("key.stevetomadeline." + id); }
     }
 
     public static final int SLOTS = 4;
-    private static final int VERSION = 2;
+    private static final int VERSION = 3;
     private static final EnumMap<Action, String[]> KEYS = new EnumMap<>(Action.class);
+    private static final EnumMap<Action, String[]> PAD = new EnumMap<>(Action.class);
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static boolean loaded, malformed;
     private static String assetPath = "", error = "";
@@ -71,7 +91,8 @@ public final class ControlBindings {
         gamepad = value; save();
     }
     public static void appearance(String path, boolean enabled) { load(); assetPath = path.trim(); showCharacter = enabled; save(); }
-    public static String get(Action action, int slot) { load(); return KEYS.get(action)[slot]; }
+    private static EnumMap<Action, String[]> group(boolean controller) { return controller ? PAD : KEYS; }
+    public static String get(Action action, boolean controller, int slot) { load(); return group(controller).get(action)[slot]; }
     public static Component name(String binding) {
         if (binding.isEmpty()) return Component.translatable("stevetomadeline.controls.unbound");
         if (GamepadBinding.isGamepad(binding)) return GamepadBinding.name(binding);
@@ -79,32 +100,35 @@ public final class ControlBindings {
         Component key = InputConstants.getKey(parts[0]).getDisplayName();
         return parts.length == 1 ? key : Component.literal(parts[1] + " + ").append(key);
     }
-    public static boolean set(Action action, int slot, String key) {
+    public static boolean set(Action action, boolean controller, int slot, String binding) {
         load();
-        String[] keys = KEYS.get(action);
-        for (int i = 0; i < keys.length; i++) if (!key.isEmpty() && keys[i].equals(key)) keys[i] = "";
-        keys[slot] = key;
+        String[] values = group(controller).get(action);
+        for (int i = 0; i < values.length; i++) if (!binding.isEmpty() && values[i].equals(binding)) values[i] = "";
+        values[slot] = binding;
         PhysicsKeys.clearClicks();
         return save();
     }
-    public static void defaults() {
+    public static void defaults(boolean controller) {
         load();
-        for (Action action : Action.values()) KEYS.put(action, action.defaults.clone());
+        for (Action action : Action.values())
+            group(controller).put(action, (controller ? action.controller : action.keyboard).clone());
         PhysicsKeys.clearClicks(); save();
     }
-    public static boolean conflict(Action action, int slot) {
-        String key = get(action, slot);
-        if (key.isEmpty()) return false;
-        if (samePhysical(key, com.stevetomadeline.client.SteveToMadelineKeys.OPEN_SETTINGS.getKey().getName())) return true;
-        for (Action other : Action.values()) if (other != action && Arrays.stream(KEYS.get(other)).anyMatch(binding -> samePhysical(key, binding))) return true;
+    public static boolean conflict(Action action, boolean controller, int slot) {
+        String binding = get(action, controller, slot);
+        if (binding.isEmpty()) return false;
+        if (!controller && sameBinding(false, binding, com.stevetomadeline.client.SteveToMadelineKeys.OPEN_SETTINGS.getKey().getName())) return true;
+        for (Action other : Action.values())
+            if (other != action)
+                for (String entry : group(controller).get(other))
+                    if (sameBinding(controller, binding, entry)) return true;
         return false;
     }
     private static String base(String binding) { return binding.split(":", 2)[0]; }
     /** Keyboard modifiers share one physical key; controller bindings are compared verbatim. */
-    private static boolean samePhysical(String left, String right) {
+    private static boolean sameBinding(boolean controller, String left, String right) {
         if (left.isEmpty() || right.isEmpty()) return false;
-        if (GamepadBinding.isGamepad(left) || GamepadBinding.isGamepad(right)) return left.equals(right);
-        return base(left).equals(base(right));
+        return controller ? left.equals(right) : base(left).equals(base(right));
     }
     private static boolean modifiers(String binding, Set<String> held) {
         if (!binding.contains(":")) return true;
@@ -125,14 +149,18 @@ public final class ControlBindings {
     }
     private static boolean reserved(String binding) {
         if (binding.isEmpty()) return false;
-        if (samePhysical(binding, com.stevetomadeline.client.SteveToMadelineKeys.OPEN_SETTINGS.getKey().getName())) return true;
+        boolean controller = GamepadBinding.isGamepad(binding);
+        if (!controller && sameBinding(false, binding, com.stevetomadeline.client.SteveToMadelineKeys.OPEN_SETTINGS.getKey().getName())) return true;
         for (Action action : new Action[]{Action.TOGGLE, Action.TURN})
-            for (String other : KEYS.get(action)) if (samePhysical(binding, other)) return true;
+            for (String other : group(controller).get(action)) if (sameBinding(controller, binding, other)) return true;
         return false;
     }
     public static boolean held(Action action, InputTimeline.Sample sample) {
         load();
-        for (String binding : KEYS.get(action)) {
+        return held(KEYS.get(action), sample) || held(PAD.get(action), sample);
+    }
+    private static boolean held(String[] bindings, InputTimeline.Sample sample) {
+        for (String binding : bindings) {
             if (binding.isEmpty() || reserved(binding)) continue;
             if (GamepadBinding.isGamepad(binding)) {
                 if (sample.held().contains(binding)) return true;
@@ -142,7 +170,10 @@ public final class ControlBindings {
     }
     public static boolean pressed(Action action, InputTimeline.Sample sample) {
         load();
-        for (String binding : KEYS.get(action)) {
+        return pressed(action, KEYS.get(action), sample) || pressed(action, PAD.get(action), sample);
+    }
+    private static boolean pressed(Action action, String[] bindings, InputTimeline.Sample sample) {
+        for (String binding : bindings) {
             if (action != Action.TOGGLE && action != Action.TURN && reserved(binding)) continue;
             if (binding.isEmpty()) continue;
             for (InputTimeline.Press press : sample.pressed())
@@ -156,54 +187,104 @@ public final class ControlBindings {
                 .anyMatch(binding -> !binding.isEmpty() && !GamepadBinding.isGamepad(binding) && base(binding).equals(key.getName()));
     }
 
-    private static boolean valid(String binding) {
-        if (binding.isEmpty()) return false;
-        if (GamepadBinding.isGamepad(binding)) return GamepadBinding.valid(binding);
+    private static boolean validKeyboard(String binding) {
+        if (binding.isEmpty() || GamepadBinding.isGamepad(binding)) return false;
         InputConstants.getKey(base(binding));
         return true;
+    }
+    private static boolean validController(String binding) {
+        return GamepadBinding.isGamepad(binding) && GamepadBinding.valid(binding);
+    }
+    private static void requireKeyboard(String binding) throws IOException {
+        try {
+            if (!validKeyboard(binding)) throw new IOException("Invalid keyboard binding " + binding);
+        } catch (IllegalArgumentException ex) {
+            throw new IOException("Invalid keyboard binding " + binding, ex);
+        }
+    }
+    private static void requireController(String binding) throws IOException {
+        if (!validController(binding)) throw new IOException("Invalid controller binding " + binding);
     }
 
     private static void load() {
         if (loaded) return;
         loaded = true;
-        for (Action action : Action.values()) KEYS.put(action, action.defaults.clone());
+        for (Action action : Action.values()) {
+            KEYS.put(action, action.keyboard.clone());
+            PAD.put(action, action.controller.clone());
+        }
         if (!Files.exists(path())) { migrate(); return; }
         boolean upgrade = false;
         try (var reader = Files.newBufferedReader(path(), StandardCharsets.UTF_8)) {
             JsonObject root = JsonParser.parseReader(reader).getAsJsonObject();
             int version = root.has("version") ? root.get("version").getAsInt() : 0;
             if (version < 1 || version > VERSION) throw new IOException("Unsupported controls version " + version);
-            JsonObject bindings = root.getAsJsonObject("bindings");
-            for (Action action : Action.values()) if (bindings.has(action.id)) {
-                JsonArray values = bindings.getAsJsonArray(action.id);
-                if (values.size() > SLOTS) throw new IOException("Too many binding slots");
-                String[] keys = new String[SLOTS];
-                Arrays.fill(keys, "");
-                for (int i = 0; i < values.size(); i++) {
-                    String name = values.get(i).getAsString();
-                    if (!name.isEmpty() && !valid(name)) throw new IOException("Invalid binding " + name + " for " + action.id);
-                    keys[i] = name;
-                }
-                KEYS.put(action, keys);
+            JsonObject bindings = root.has("bindings") ? root.getAsJsonObject("bindings") : null;
+            if (version == 2) {
+                splitVersionTwo(bindings);
+            } else {
+                readGroup(bindings, KEYS, false);
+                if (root.has("controllerBindings")) readGroup(root.getAsJsonObject("controllerBindings"), PAD, true);
             }
             if (root.has("celestePath")) assetPath = root.get("celestePath").getAsString();
             if (root.has("showCharacter")) showCharacter = root.get("showCharacter").getAsBoolean();
             presentation = PresentationOptions.read(root);
             gamepad = GamepadOptions.read(root);
-            if (version < VERSION) { upgrade = true; fillGamepadDefaults(KEYS); }
+            if (version < VERSION) upgrade = true;
         } catch (Exception ex) {
             malformed = true; error = ex.getMessage(); SteveToMadeline.LOGGER.warn("Could not load controls", ex);
         }
         if (upgrade) save();
     }
 
-    /** Version-one files had three slots and no controller entries; only empty slots gain them. */
-    static void fillGamepadDefaults(Map<Action, String[]> keys) {
+    private static void readGroup(JsonObject group, EnumMap<Action, String[]> target, boolean controller) throws IOException {
+        if (group == null) return;
         for (Action action : Action.values()) {
-            String[] bindings = keys.get(action);
-            for (int slot = 0; slot < SLOTS; slot++) {
-                String fallback = action.defaults[slot];
-                if (bindings[slot].isEmpty() && GamepadBinding.isGamepad(fallback)) bindings[slot] = fallback;
+            if (!group.has(action.id)) continue;
+            JsonArray values = group.getAsJsonArray(action.id);
+            if (values.size() > SLOTS) throw new IOException("Too many binding slots for " + action.id);
+            String[] bindings = new String[SLOTS];
+            Arrays.fill(bindings, "");
+            for (int i = 0; i < values.size(); i++) {
+                String name = values.get(i).getAsString();
+                if (name.isEmpty()) continue;
+                if (controller) requireController(name); else requireKeyboard(name);
+                bindings[i] = name;
+            }
+            target.put(action, bindings);
+        }
+    }
+
+    /** Version two stored keyboard and controller entries in one four-slot list. */
+    private static void splitVersionTwo(JsonObject group) throws IOException {
+        if (group == null) return;
+        for (Action action : Action.values()) {
+            if (!group.has(action.id)) continue;
+            JsonArray values = group.getAsJsonArray(action.id);
+            if (values.size() > SLOTS) throw new IOException("Too many binding slots for " + action.id);
+            String[] mixed = new String[values.size()];
+            for (int i = 0; i < values.size(); i++) mixed[i] = values.get(i).getAsString();
+            String[] keyboard = new String[SLOTS], controller = new String[SLOTS];
+            Arrays.fill(keyboard, "");
+            Arrays.fill(controller, "");
+            splitMixed(mixed, keyboard, controller);
+            KEYS.put(action, keyboard);
+            PAD.put(action, controller);
+        }
+    }
+
+    static void splitMixed(String[] mixed, String[] keyboard, String[] controller) throws IOException {
+        int keys = 0, pads = 0;
+        for (String binding : mixed) {
+            if (binding.isEmpty()) continue;
+            if (GamepadBinding.isGamepad(binding)) {
+                requireController(binding);
+                if (pads >= controller.length) throw new IOException("Too many controller slots");
+                controller[pads++] = binding;
+            } else {
+                requireKeyboard(binding);
+                if (keys >= keyboard.length) throw new IOException("Too many keyboard slots");
+                keyboard[keys++] = binding;
             }
         }
     }
@@ -237,9 +318,13 @@ public final class ControlBindings {
             root.addProperty("celestePath", assetPath); root.addProperty("showCharacter", showCharacter);
             presentation.write(root);
             gamepad.write(root);
-            JsonObject bindings = new JsonObject();
-            for (Action action : Action.values()) bindings.add(action.id, GSON.toJsonTree(KEYS.get(action)));
+            JsonObject bindings = new JsonObject(), controller = new JsonObject();
+            for (Action action : Action.values()) {
+                bindings.add(action.id, GSON.toJsonTree(KEYS.get(action)));
+                controller.add(action.id, GSON.toJsonTree(PAD.get(action)));
+            }
             root.add("bindings", bindings);
+            root.add("controllerBindings", controller);
             Files.writeString(temporary, GSON.toJson(root), StandardCharsets.UTF_8);
             if (malformed && Files.exists(path())) Files.copy(path(), path().resolveSibling(path().getFileName() + ".invalid-" + System.currentTimeMillis()));
             try { Files.move(temporary, path(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING); }

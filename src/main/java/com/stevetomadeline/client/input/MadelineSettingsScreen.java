@@ -19,12 +19,13 @@ import org.lwjgl.glfw.GLFW;
 import org.lwjgl.util.tinyfd.TinyFileDialogs;
 
 public final class MadelineSettingsScreen extends Screen {
-    private static final String[] TABS = {"settings.controls", "settings.character", "settings.effects",
-            "settings.gamepad", "settings.camera"};
+    private static final String[] TABS = {"settings.controls", "settings.gamepad", "settings.character",
+            "settings.effects", "settings.camera"};
     private final Screen parent;
-    private int page, tab, rows, start, contentWidth;
+    private int page, padPage, tab, rows, padRows, start, contentWidth;
     private ControlBindings.Action listening;
     private int listeningSlot;
+    private boolean listeningGamepad;
     private EditBox path;
     public MadelineSettingsScreen(Screen parent) { super(Component.translatable("stevetomadeline.settings.title")); this.parent = parent; }
     private static Component text(String key) { return Component.translatable("stevetomadeline." + key); }
@@ -32,6 +33,7 @@ public final class MadelineSettingsScreen extends Screen {
         return addRenderableWidget(Button.builder(label, b -> action.run()).bounds(x, y, w, 20).build());
     }
     private int labelWidth() { return Math.min(140, contentWidth * 2 / 5); }
+    private void stopListening() { listening = null; GamepadInput.endCapture(); }
     @Override protected void init() {
         CelesteAssets.ensure();
         contentWidth = Math.min(440, width - 24); start = (width - contentWidth) / 2;
@@ -46,11 +48,12 @@ public final class MadelineSettingsScreen extends Screen {
                                     showCameraOption(key, WindowXCompat.available()) ? element : null)));
                     return;
                 }
-                tab = current; listening = null; GamepadInput.endCapture(); rebuildWidgets();
+                tab = current; stopListening(); rebuildWidgets();
             });
             entry.active = current == TABS.length - 1 || tab != current;
+            if (current == 1) entry.setTooltip(Tooltip.create(text("gamepad.hint")));
         }
-        if (tab == 0) controls(); else if (tab == 1) character(); else if (tab == 2) effects(); else if (tab == 3) gamepad();
+        if (tab == 0) controls(); else if (tab == 1) gamepad(); else if (tab == 2) character(); else if (tab == 3) effects();
         button(Component.translatable("gui.done"), width / 2 - 70, height - 26, 140, this::onClose);
     }
     static boolean showCameraOption(String key, boolean windowXAvailable) {
@@ -77,34 +80,39 @@ public final class MadelineSettingsScreen extends Screen {
             var action = ControlBindings.Action.values()[page * rows + row];
             for (int slot = 0; slot < ControlBindings.SLOTS; slot++) {
                 final int index = slot;
-                Component name = listening == action && listeningSlot == slot ? text("controls.listening") : ControlBindings.name(ControlBindings.get(action, slot));
+                Component name = listening(action, slot, false) ? text("controls.listening")
+                        : ControlBindings.name(ControlBindings.get(action, false, slot));
                 String shown = font.plainSubstrByWidth(name.getString(), keyWidth - 25);
-                Button button = button(Component.literal(shown).withColor(ControlBindings.conflict(action, slot) ? 0xFFC46A : 0xFFFFFF),
+                Button button = button(Component.literal(shown).withColor(ControlBindings.conflict(action, false, slot) ? 0xFFC46A : 0xFFFFFF),
                         start + labelWidth + slot * keyWidth, 90 + row * 23, keyWidth - 19,
-                        () -> { listening = action; listeningSlot = index; GamepadInput.beginCapture(); rebuildWidgets(); });
+                        () -> listen(action, index, false));
                 Component tooltip = action.label().copy().append("\n").append(name);
-                button.setTooltip(Tooltip.create(ControlBindings.conflict(action, slot)
+                button.setTooltip(Tooltip.create(ControlBindings.conflict(action, false, slot)
                         ? tooltip.copy().append("\n").append(text("controls.conflict")) : tooltip));
                 button(Component.literal("x"), start + labelWidth + (slot + 1) * keyWidth - 18, 90 + row * 23, 16,
-                        () -> { ControlBindings.set(action, index, ""); listening = null; GamepadInput.endCapture(); rebuildWidgets(); })
+                        () -> { ControlBindings.set(action, false, index, ""); stopListening(); rebuildWidgets(); })
                         .setTooltip(Tooltip.create(text("controls.clear")));
             }
         }
-        button(Component.literal("<"), start, height - 54, 24, () -> { page--; listening = null; GamepadInput.endCapture(); rebuildWidgets(); }).active = page > 0;
-        button(Component.literal(">"), start + 28, height - 54, 24, () -> { page++; listening = null; GamepadInput.endCapture(); rebuildWidgets(); }).active = page + 1 < pages;
-        button(text("controls.defaults"), start + contentWidth - 120, height - 54, 120, () -> {
-            ControlBindings.defaults(); listening = null; GamepadInput.endCapture(); rebuildWidgets();
-        });
+        button(Component.literal("<"), start, height - 54, 24,
+                () -> { page--; stopListening(); rebuildWidgets(); }).active = page > 0;
+        button(Component.literal(">"), start + 28, height - 54, 24,
+                () -> { page++; stopListening(); rebuildWidgets(); }).active = page + 1 < pages;
+        button(text("controls.reset.keyboard"), start + contentWidth - 120, height - 54, 120,
+                () -> { ControlBindings.defaults(false); stopListening(); rebuildWidgets(); })
+                .setTooltip(Tooltip.create(text("controls.defaults.keyboard")));
     }
+
     private void gamepad() {
         GamepadOptions options = ControlBindings.gamepad();
-        addRenderableWidget(Checkbox.builder(text("gamepad.enabled"), font).pos(start, 62).maxWidth(contentWidth)
+        addRenderableWidget(Checkbox.builder(text("gamepad.enabled"), font).pos(start, 59).maxWidth(contentWidth - 120)
                 .selected(options.enabled()).onValueChange((checkbox, enabled) -> {
                     GamepadOptions old = ControlBindings.gamepad();
                     ControlBindings.gamepad(new GamepadOptions(enabled, old.deadzone()));
-                    rebuildWidgets();
+                    stopListening(); rebuildWidgets();
                 }).build());
-        addRenderableWidget(new AbstractSliderButton(start, 90, contentWidth, 20, Component.empty(),
+        button(text("gamepad.rescan"), start + contentWidth - 110, 59, 110, GamepadInput::rescan);
+        addRenderableWidget(new AbstractSliderButton(start, 84, contentWidth, 20, Component.empty(),
                 (options.deadzone() - GamepadOptions.MIN_DEADZONE) / (GamepadOptions.MAX_DEADZONE - GamepadOptions.MIN_DEADZONE)) {
             { updateMessage(); }
             @Override protected void updateMessage() { setMessage(Component.translatable("stevetomadeline.gamepad.deadzone", percent())); }
@@ -117,7 +125,44 @@ public final class MadelineSettingsScreen extends Screen {
                 return (int) Math.round(100 * (GamepadOptions.MIN_DEADZONE + value * (GamepadOptions.MAX_DEADZONE - GamepadOptions.MIN_DEADZONE)));
             }
         });
-        button(text("gamepad.rescan"), start, 118, 120, GamepadInput::rescan);
+        padRows = Math.max(1, (height - 141 - 58) / 23);
+        int count = ControlBindings.Action.values().length, pages = (count + padRows - 1) / padRows;
+        padPage = Math.min(padPage, pages - 1);
+        int labelWidth = labelWidth(), keyWidth = (contentWidth - labelWidth) / ControlBindings.SLOTS;
+        for (int row = 0; row < padRows && padPage * padRows + row < count; row++) {
+            var action = ControlBindings.Action.values()[padPage * padRows + row];
+            for (int slot = 0; slot < ControlBindings.SLOTS; slot++) {
+                final int index = slot;
+                Component name = listening(action, slot, true) ? text("controls.listening")
+                        : ControlBindings.name(ControlBindings.get(action, true, slot));
+                String shown = font.plainSubstrByWidth(name.getString(), keyWidth - 25);
+                Button button = button(Component.literal(shown).withColor(ControlBindings.conflict(action, true, slot) ? 0xFFC46A : 0xFFFFFF),
+                        start + labelWidth + slot * keyWidth, 141 + row * 23, keyWidth - 19,
+                        () -> listen(action, index, true));
+                Component tooltip = action.label().copy().append("\n").append(name);
+                button.setTooltip(Tooltip.create(ControlBindings.conflict(action, true, slot)
+                        ? tooltip.copy().append("\n").append(text("controls.conflict")) : tooltip));
+                button(Component.literal("x"), start + labelWidth + (slot + 1) * keyWidth - 18, 141 + row * 23, 16,
+                        () -> { ControlBindings.set(action, true, index, ""); stopListening(); rebuildWidgets(); })
+                        .setTooltip(Tooltip.create(text("controls.clear")));
+            }
+        }
+        button(Component.literal("<"), start, height - 54, 24,
+                () -> { padPage--; stopListening(); rebuildWidgets(); }).active = padPage > 0;
+        button(Component.literal(">"), start + 28, height - 54, 24,
+                () -> { padPage++; stopListening(); rebuildWidgets(); }).active = padPage + 1 < pages;
+        button(text("controls.reset.gamepad"), start + contentWidth - 120, height - 54, 120,
+                () -> { ControlBindings.defaults(true); stopListening(); rebuildWidgets(); })
+                .setTooltip(Tooltip.create(text("controls.defaults.gamepad")));
+    }
+
+    private boolean listening(ControlBindings.Action action, int slot, boolean gamepad) {
+        return listening == action && listeningSlot == slot && listeningGamepad == gamepad;
+    }
+    private void listen(ControlBindings.Action action, int slot, boolean gamepad) {
+        listening = action; listeningSlot = slot; listeningGamepad = gamepad;
+        if (gamepad) GamepadInput.beginCapture(); else GamepadInput.endCapture();
+        rebuildWidgets();
     }
     private void character() {
         path = addRenderableWidget(new EditBox(font, start, 78, contentWidth - 64, 20, text("assets.path")));
@@ -177,26 +222,34 @@ public final class MadelineSettingsScreen extends Screen {
     }
     @Override public void tick() {
         super.tick();
-        if (listening == null) return;
+        if (listening == null || !listeningGamepad) return;
         String captured = GamepadInput.takeCapture();
         if (captured == null) return;
-        ControlBindings.set(listening, listeningSlot, captured);
-        listening = null; GamepadInput.endCapture(); rebuildWidgets();
+        ControlBindings.set(listening, true, listeningSlot, captured);
+        stopListening(); rebuildWidgets();
     }
     @Override public boolean keyPressed(int key, int scan, int modifiers) {
+        if (listeningGamepad) {
+            if (key == GLFW.GLFW_KEY_ESCAPE) { stopListening(); rebuildWidgets(); }
+            return true;
+        }
         if (listening != null) {
             if (key != GLFW.GLFW_KEY_ESCAPE) {
                 String name = key == GLFW.GLFW_KEY_BACKSPACE || key == GLFW.GLFW_KEY_DELETE ? "" : InputConstants.getKey(key, scan).getName();
-                ControlBindings.set(listening, listeningSlot, name);
+                ControlBindings.set(listening, false, listeningSlot, name);
             }
-            listening = null; GamepadInput.endCapture(); rebuildWidgets(); return true;
+            stopListening(); rebuildWidgets(); return true;
         }
         return super.keyPressed(key, scan, modifiers);
     }
     @Override public boolean mouseClicked(double x, double y, int button) {
+        if (listeningGamepad) {
+            stopListening(); rebuildWidgets();
+            return true;
+        }
         if (listening != null) {
-            ControlBindings.set(listening, listeningSlot, InputConstants.Type.MOUSE.getOrCreate(button).getName());
-            listening = null; GamepadInput.endCapture(); rebuildWidgets(); return true;
+            ControlBindings.set(listening, false, listeningSlot, InputConstants.Type.MOUSE.getOrCreate(button).getName());
+            stopListening(); rebuildWidgets(); return true;
         }
         return super.mouseClicked(x, y, button);
     }
@@ -210,28 +263,29 @@ public final class MadelineSettingsScreen extends Screen {
                 gui.drawString(font, font.plainSubstrByWidth(action.label().getString(), labelWidth() - 4), start, 96 + row * 23, 0xFFFFFF);
             }
         } else if (tab == 1) {
+            int y = 108;
+            for (Component line : gamepadStatus()) {
+                if (y > 118) break;
+                gui.drawString(font, font.plainSubstrByWidth(line.getString(), contentWidth), start, y, 0xD6D9DE);
+                y += 10;
+            }
+            gui.drawString(font, text("gamepad.bindings"), start, 129, 0xFFFFFF);
+            for (int row = 0; row < padRows && padPage * padRows + row < ControlBindings.Action.values().length; row++) {
+                var action = ControlBindings.Action.values()[padPage * padRows + row];
+                gui.drawString(font, font.plainSubstrByWidth(action.label().getString(), labelWidth() - 4), start, 147 + row * 23, 0xFFFFFF);
+            }
+        } else if (tab == 2) {
             gui.drawString(font, text("assets.path"), start, 64, 0xFFFFFF);
             int available = Math.max(0, (height - 194) / 10);
             var lines = font.split(CelesteAssets.status(), contentWidth);
             for (int i = 0; i < Math.min(available, lines.size()); i++) gui.drawString(font, lines.get(i), start, 160 + i * 10, 0xD6D9DE);
-        } else if (tab == 2) {
+        } else if (tab == 3) {
             var lines = font.split(com.stevetomadeline.client.audio.CelesteAudio.status(), contentWidth);
             for (int i = 0; i < Math.min(Math.max(0, (height - 186) / 10), lines.size()); i++)
                 gui.drawString(font, lines.get(i), start, 152 + i * 10, 0xD6D9DE);
-        } else if (tab == 3) {
-            gui.drawString(font, text("gamepad.status"), start, 148, 0xFFFFFF);
-            int y = 162;
-            for (Component line : gamepadStatus()) {
-                if (y > height - 96) break;
-                gui.drawString(font, line, start, y, 0xD6D9DE);
-                y += 10;
-            }
-            var hint = font.split(text("gamepad.hint"), contentWidth);
-            for (int i = 0; i < hint.size() && y + 6 + i * 10 < height - 70; i++)
-                gui.drawString(font, hint.get(i), start, y + 6 + i * 10, 0x9AA0A6);
         }
         if (!ControlBindings.error().isEmpty()) gui.drawString(font,
                 font.plainSubstrByWidth(text("controls.save_error").getString(), contentWidth), start, height - 66, 0xFF7777);
     }
-    @Override public void onClose() { GamepadInput.endCapture(); PhysicsKeys.clearClicks(); minecraft.setScreen(parent); }
+    @Override public void onClose() { stopListening(); PhysicsKeys.clearClicks(); minecraft.setScreen(parent); }
 }

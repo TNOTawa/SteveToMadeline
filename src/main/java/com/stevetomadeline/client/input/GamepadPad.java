@@ -11,6 +11,10 @@ import java.util.Set;
 /**
  * Converts one merged controller state per device family into canonical binding edges.
  *
+ * <p>Standard gamepad and raw joystick bindings keep independent pressed sets. They arrive in
+ * separate passes every frame; sharing one set made the raw pass release a held standard button
+ * immediately, which looked like autorepeat.</p>
+ *
  * <p>Analog axes use separate press and release thresholds, so a stick resting around the
  * deadzone edge cannot chatter. Triggers only expose their positive travel: GLFW reports a
  * released trigger at -1, which must not read as a held negative direction.</p>
@@ -21,7 +25,8 @@ public final class GamepadPad {
     }
 
     private static final float RELEASE_RATIO = 0.7f;
-    private final Set<String> down = new LinkedHashSet<>();
+    private final Set<String> standardDown = new LinkedHashSet<>();
+    private final Set<String> rawDown = new LinkedHashSet<>();
     private final boolean[] standardAxes = new boolean[GamepadBinding.AXES.size() * 2];
     private final Map<Integer, boolean[]> rawAxes = new HashMap<>();
 
@@ -36,7 +41,7 @@ public final class GamepadPad {
                     !trigger && axis(standardAxes, i * 2, axes[i], false, deadzone));
             current.put(GamepadBinding.axis(name, true), axis(standardAxes, i * 2 + 1, axes[i], true, deadzone));
         }
-        update(current, sink);
+        update(current, standardDown, sink);
     }
 
     public void raw(boolean[] buttons, int buttonCount, float[] axes, int axisCount, float deadzone, Sink sink) {
@@ -47,7 +52,7 @@ public final class GamepadPad {
             current.put(GamepadBinding.rawAxis(i, false), axis(gate, 0, axes[i], false, deadzone));
             current.put(GamepadBinding.rawAxis(i, true), axis(gate, 1, axes[i], true, deadzone));
         }
-        update(current, sink);
+        update(current, rawDown, sink);
     }
 
     private static boolean axis(boolean[] gate, int index, float value, boolean positive, float deadzone) {
@@ -58,7 +63,7 @@ public final class GamepadPad {
     }
 
     /** Releases first so a direction change cannot leave the old direction held. */
-    private void update(Map<String, Boolean> current, Sink sink) {
+    private static void update(Map<String, Boolean> current, Set<String> down, Sink sink) {
         for (var iterator = down.iterator(); iterator.hasNext(); ) {
             String binding = iterator.next();
             if (!Boolean.TRUE.equals(current.get(binding))) {
@@ -71,13 +76,20 @@ public final class GamepadPad {
     }
 
     public void releaseAll(Sink sink) {
-        for (String binding : new ArrayList<>(down)) sink.edge(binding, false);
-        down.clear();
+        release(standardDown, sink);
+        release(rawDown, sink);
         Arrays.fill(standardAxes, false);
         rawAxes.clear();
     }
 
+    private static void release(Set<String> down, Sink sink) {
+        for (String binding : new ArrayList<>(down)) sink.edge(binding, false);
+        down.clear();
+    }
+
     public Set<String> down() {
-        return Set.copyOf(down);
+        Set<String> all = new LinkedHashSet<>(standardDown);
+        all.addAll(rawDown);
+        return Set.copyOf(all);
     }
 }

@@ -50,7 +50,8 @@ public final class GamepadInput {
         if (minecraft.getWindow() == null) return;
         updateDevices();
         GamepadOptions options = ControlBindings.gamepad();
-        boolean usable = options.enabled() && minecraft.isWindowActive();
+        // Binding capture stays available while controller input is disabled.
+        boolean usable = (options.enabled() || capturing) && minecraft.isWindowActive();
         if (!usable) {
             if (active) {
                 active = false;
