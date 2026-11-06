@@ -13,7 +13,8 @@ import net.minecraft.world.phys.Vec3;
 /**
  * 主窗口侧视摄像机：位置/朝向由这里统一计算，CameraMixin 每帧写入 {@code Camera}。
  *
- * <p>2D：与眼睛等高、pitch 0；2.5D：抬高并下俯 12°。2.5D 会沿相机方向做方块检测，
+ * <p>2D：与眼睛等高、pitch 0；连续景深相机后移但保持玩家平面缩放。
+ * 2.5D：抬高并下俯 12°。2.5D 会沿相机方向做方块检测，
  * 避免整个镜头埋进山体。
  */
 public final class CameraController {
@@ -24,19 +25,30 @@ public final class CameraController {
     }
 
     public static float yaw(LocalPlayer player) {
-        return Math.round(player.getYRot() / 90.0f) * 90.0f;
+        var plane = ClientPlaneController.plane();
+        return plane == null ? Math.round(player.getYRot() / 90.0f) * 90.0f : plane.heading().yaw();
+    }
+
+    public static float renderYaw(float partialTick) {
+        return ClientPlaneController.cameraYaw(partialTick);
     }
 
     public static float pitch() {
         return RenderModeManager.isIsometric() ? (float) ISOMETRIC_PITCH : 0.0f;
     }
 
+    public static double distance() {
+        return ParallaxRenderer.usesDepthPerspective()
+                ? Math.max(Config.cameraDistance(), Config.DEPTH_DISTANCE.get())
+                : Config.cameraDistance();
+    }
+
     public static Vec3 position(LocalPlayer player, float partialTick) {
-        float yaw = yaw(player);
+        float yaw = renderYaw(partialTick);
         double radians = Math.toRadians(yaw);
         double lookX = -Math.sin(radians);
         double lookZ = Math.cos(radians);
-        double distance = Config.CAMERA_DISTANCE.get();
+        double distance = distance();
         double up = Math.tan(Math.toRadians(ISOMETRIC_PITCH)) * distance;
 
         Vec3 eye = player.getEyePosition(partialTick);

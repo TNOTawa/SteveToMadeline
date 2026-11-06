@@ -27,7 +27,14 @@ sourceSets.main.resources {
 }
 
 repositories {
-    // Add here additional repositories if required by some of the dependencies below.
+    exclusiveContent {
+        forRepository { mavenCentral() }
+        filter {
+            includeGroupByRegex 'org\\.junit.*'
+            includeGroup 'org.opentest4j'
+            includeGroup 'org.apiguardian'
+        }
+    }
 }
 
 base {
@@ -40,6 +47,9 @@ java.toolchain.languageVersion = JavaLanguageVersion.of(21)
 neoForge {
     // Specify the version of NeoForge to use.
     version = project.neo_version
+
+    // Geometry regressions exercise Minecraft's AABB and voxel collision code.
+    addModdingDependenciesTo sourceSets.test
 
     parchment {
         mappingsVersion = project.parchment_mappings_version
@@ -116,9 +126,15 @@ configurations {
 }
 
 dependencies {
-    // WindowX 固定前置：编译期用 API，运行期必须真实加载（版本由 libs 内 jar 锁定）
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.4'
+    // Minecraft 1.21.1's matrix library is not inherited by the unit-test source set.
+    testImplementation 'org.joml:joml:1.10.5'
+    // The experimental layered renderer uses WindowX only when it is installed.
     compileOnly files("libs/windowx-2.2.0-Beta2-1.21.1-NeoForge.jar")
-    localRuntime files("libs/windowx-2.2.0-Beta2-1.21.1-NeoForge.jar")
+    if (project.hasProperty('withWindowX')) {
+        localRuntime files("libs/windowx-2.2.0-Beta2-1.21.1-NeoForge.jar")
+    }
 
     // Example optional mod dependency with JEI
     // The JEI API is declared for compile time use, while the full JEI artifact is used at runtime
@@ -184,6 +200,10 @@ publishing {
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8' // Use the UTF-8 charset for Java compilation
+}
+
+tasks.named('test', Test).configure {
+    useJUnitPlatform()
 }
 
 // IDEA no longer automatically downloads sources/javadoc jars for dependencies, so we need to explicitly enable the behavior.

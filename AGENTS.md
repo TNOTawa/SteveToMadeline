@@ -59,16 +59,16 @@
 
 ## Project map
 
-- **Current phase:** P0 技术验证完成（主窗口正交摄像机 + 2D 渲染），P1 待开始；进度与结论见 [docs/DEVLOG.md](docs/DEVLOG.md)
+- **Current phase:** P1 已通过用户实机验收；P2 高级动作与 P3 角色代码接入，待用户实机验收；P4 外部导入取消，使用模组内多键设置界面。见 [docs/DEVLOG.md](docs/DEVLOG.md) 和 [docs/P2_IMPLEMENTATION.md](docs/P2_IMPLEMENTATION.md)
 - **Project:** SteveToMadeline
-- **Purpose:** 在 Minecraft 1.21.1 NeoForge 中以 WindowX 为前置实现 Celeste 风格二维横版移动、平面切换与玛德琳表现
+- **Purpose:** 在 Minecraft 1.21.1 NeoForge 中实现 Celeste 风格二维横版移动、平面切换与玛德琳表现；仅实验性旧分层远景可选用 WindowX
 - **Main entry point:** `src/main/java/...`（NeoForge mod 主类）
 - **Architecture map:** 见 `初版开发计划书.txt` 第 5 节模块表
 - **Build/setup:** `gradlew build`（JDK 21 + Gradle 用户目录 `<GRADLE_USER_HOME>`）
-- **Fast relevant tests:** `gradlew test`（P2 起才有物理测试）
+- **Fast relevant tests:** `gradlew test`（物理、输入、碰撞、资源与渲染回归；代理可运行自动测试，但不启动游戏）
 - **Full QA command:** `gradlew build`（P2 引入物理测试后替换为统一入口）
 - **Release/build artifact:** `build/libs/stevetomadeline-*.jar`
-- **Critical data/compatibility notes:** 锁定 [windowx-2.2.0-Beta2-1.21.1-NeoForge.jar](<windowx-2.2.0-Beta2-1.21.1-NeoForge.jar>)（SHA256 `145BE1D2E2341162453BE84E93E8D44FC122EE6614FA538F9F65AFED7ABB5A5C`）；依赖 NeoForge `[21.1.234,)`、MC `[1.21.1]`
+- **Critical data/compatibility notes:** WindowX 是可选依赖；仅 `LAYERED` 离屏远景使用锁定的 [windowx-2.2.0-Beta2-1.21.1-NeoForge.jar](<windowx-2.2.0-Beta2-1.21.1-NeoForge.jar>)（SHA256 `145BE1D2E2341162453BE84E93E8D44FC122EE6614FA538F9F65AFED7ABB5A5C`）；开发运行需显式传 `-PwithWindowX`。依赖 NeoForge `[21.1.234,)`、MC `[1.21.1]`
 
 ## Completion
 

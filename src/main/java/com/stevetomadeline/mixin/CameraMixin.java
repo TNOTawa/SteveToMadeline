@@ -2,6 +2,7 @@ package com.stevetomadeline.mixin;
 
 import com.stevetomadeline.client.CameraController;
 import com.stevetomadeline.client.mode.RenderModeManager;
+import com.stevetomadeline.client.windowx.WindowXCompat;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -35,7 +36,7 @@ public abstract class CameraMixin {
     private void stevetomadeline$applyCameraMode(BlockGetter level, Entity entity, boolean detached,
                                                  boolean thirdPersonReverse, float partialTick,
                                                  CallbackInfo ci) {
-        if (!RenderModeManager.isCameraMode()) {
+        if (!RenderModeManager.isCameraMode() || WindowXCompat.isRendering()) {
             return;
         }
         LocalPlayer player = Minecraft.getInstance().player;
@@ -44,7 +45,7 @@ public abstract class CameraMixin {
         }
         Vec3 position = CameraController.position(player, partialTick);
         setPosition(position);
-        setRotation(CameraController.yaw(player), CameraController.pitch());
+        setRotation(CameraController.renderYaw(partialTick), CameraController.pitch());
         // 强制第三人称语义，让玩家模型始终参与渲染。
         this.detached = true;
         if (LAST_LOGGED != RenderModeManager.mode()) {

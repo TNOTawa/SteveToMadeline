@@ -10,6 +10,7 @@ import com.mojang.logging.LogUtils;
 import com.stevetomadeline.Config;
 import com.stevetomadeline.SteveToMadeline;
 import com.stevetomadeline.client.mode.RenderModeManager;
+import com.stevetomadeline.client.windowx.WindowXCompat;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
@@ -55,7 +56,7 @@ public final class CameraRenderHandler {
 
     @SubscribeEvent
     public static void onRenderStage(RenderLevelStageEvent event) {
-        if (ParallaxRenderer.isRendering()) {
+        if (WindowXCompat.isRendering()) {
             return;
         }
         if (!RenderModeManager.isFlat2D()) {
@@ -63,16 +64,16 @@ public final class CameraRenderHandler {
         }
         float partialTick = event.getPartialTick().getGameTimeDeltaPartialTick(false);
         if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_SKY) {
-            if (ParallaxRenderer.enabled()) {
-                ParallaxRenderer.renderBackground(partialTick);
-                ParallaxRenderer.composite();
-            }
+            ParallaxRenderer.composite();
         } else if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) {
             drawForegroundSlice(partialTick);
         }
     }
 
     private static void drawForegroundSlice(float partialTick) {
+        if (!TerrainClipping.drawSlice()) {
+            return;
+        }
         Minecraft mc = Minecraft.getInstance();
         ClientLevel level = mc.level;
         LocalPlayer player = mc.player;
@@ -95,7 +96,8 @@ public final class CameraRenderHandler {
         double planeOffset = slice * 0.5;
         // 正交伪视差：前景层按移动速度做一个极小的横向超前，背景保持原速。
         Vec3 velocity = player.getDeltaMovement();
-        double parallax = velocity.dot(new Vec3(right.x, 0.0, right.z)) * Config.PARALLAX_STRENGTH.get();
+        double parallax = ParallaxRenderer.enabled() ? 0.0
+                : velocity.dot(new Vec3(right.x, 0.0, right.z)) * Config.parallaxStrength();
         double planeCoordinate = zPlane
                 ? eye.z + forward.z * planeOffset
                 : eye.x + forward.x * planeOffset;
@@ -127,7 +129,7 @@ public final class CameraRenderHandler {
                         ? new BlockPos(horizontal, vertical, planeBlock)
                         : new BlockPos(planeBlock, vertical, horizontal);
                 BlockState state = level.getBlockState(pos);
-                if (state.isAir()) {
+                if (state.isAir() || !TerrainClipping.drawSliceBlock(state)) {
                     continue;
                 }
                 TextureAtlasSprite sprite = faceSprite(mc, state, face);
@@ -163,8 +165,9 @@ public final class CameraRenderHandler {
             }
         }
 
-        if (drawn > 0) {
-            BufferUploader.drawWithShader(buffer.buildOrThrow());
+        var mesh = buffer.build();
+        if (mesh != null) {
+            BufferUploader.drawWithShader(mesh);
         }
         if (!loggedOnce) {
             loggedOnce = true;
@@ -213,12 +216,16 @@ public final class CameraRenderHandler {
         if (RenderModeManager.isCameraMode() && VanillaGuiLayers.CROSSHAIR.equals(event.getName())) {
             event.setCanceled(true);
         }
+        if (VanillaGuiLayers.TAB_LIST.equals(event.getName()) && ClientPlaneController.capturesPlayerList()) {
+            event.setCanceled(true);
+        }
     }
 
     /** 摄像机模式下放宽雾距离，让远处地形仍然可见；滑块可调。 */
     @SubscribeEvent
     public static void onRenderFog(ViewportEvent.RenderFog event) {
-        if (!RenderModeManager.isCameraMode()) {
+        if (!RenderModeManager.isCameraMode()
+                || (WindowXCompat.isRendering() && !WindowXCompat.isRenderingBackground())) {
             return;
         }
         float start = (float) Config.FOG_START.get().doubleValue();
@@ -228,12 +235,14 @@ public final class CameraRenderHandler {
         }
         event.setNearPlaneDistance(start);
         event.setFarPlaneDistance(end);
+        event.setCanceled(true);
     }
 
     /** 摄像机模式下固定雾色为当前天空色，避免入水/岩浆时天空盒突变。 */
     @SubscribeEvent
     public static void onFogColor(ViewportEvent.ComputeFogColor event) {
-        if (!RenderModeManager.isCameraMode()) {
+        if (!RenderModeManager.isCameraMode()
+                || (WindowXCompat.isRendering() && !WindowXCompat.isRenderingBackground())) {
             return;
         }
         Minecraft mc = Minecraft.getInstance();

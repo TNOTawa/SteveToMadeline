@@ -3,11 +3,24 @@
   "minVersion": "0.8.5",
   "package": "com.stevetomadeline.mixin",
   "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "PlayerPhysicsMixin",
+    "LivingPhysicsMixin",
+    "ProjectileHurtboxMixin",
+    "ServerPhysicsPacketMixin",
+    "ServerPhysicsAccess",
+    "EntityPhysicsAccess",
+    "PlayerPlaneMixin",
+    "EntityPlaneMovementMixin"
+  ],
   "client": [
+    "ClientPlanePacketMixin",
     "CameraMixin",
-    "CameraPoseAccess",
     "GameRendererMixin",
-    "LevelRendererMixin"
+    "LevelRendererMixin",
+    "ParticleEngineMixin",
+    "WindowXRenderAccess",
+    "WindowXRenderMixin"
   ],
   "injectors": {
     "defaultRequire": 0

@@ -1,7 +1,5 @@
 package com.stevetomadeline.client;
 
-import com.mojang.blaze3d.pipeline.RenderTarget;
-import com.mojang.blaze3d.pipeline.TextureTarget;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.BufferUploader;
@@ -12,176 +10,159 @@ import com.mojang.blaze3d.vertex.VertexSorting;
 import com.mojang.logging.LogUtils;
 import com.stevetomadeline.Config;
 import com.stevetomadeline.client.mode.RenderModeManager;
-import com.stevetomadeline.mixin.CameraPoseAccess;
-import net.minecraft.client.Camera;
+import com.stevetomadeline.client.windowx.WindowXCompat;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.renderer.GameRenderer;
+import net.minecraft.client.renderer.ShaderInstance;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fStack;
 import org.lwjgl.opengl.GL11;
-import org.slf4j.Logger;
 
-/**
- * 分层视差：把远景用“滞后相机”单独渲染到半分辨率 RenderTarget，
- * 主画面只保留切片；合成时远景位于切片之后。
- *
- * <p>性能上：远景用半分辨率、跳过实体/粒子；相机横向只按 ratio 跟随，
- * 玩家世界坐标与碰撞完全不受影响。锚点会在大幅移动后重置，避免无限漂移。
- */
+/** Composites the optional, last published layered frame; never re-enters LevelRenderer. */
 public final class ParallaxRenderer {
-    private static final Logger LOG = LogUtils.getLogger();
-    private static final float Z_BACKGROUND = 900.0f;
-
-    private static TextureTarget target;
-    private static boolean rendering;
-    private static Vec3 anchor;
+    private static final ParallaxTracking TRACKING = new ParallaxTracking();
+    private static ClientLevel level;
+    private static Settings settings;
+    private static int frameTexture;
     private static boolean logged;
+    private static boolean loggedFallback;
+
+    private record Settings(int width, int height, float halfHeight, double distance, double slice,
+                            double ratio, double fogStart, double fogEnd, float renderDistance) {
+    }
 
     private ParallaxRenderer() {
     }
 
-    public static boolean isRendering() {
-        return rendering;
-    }
-
     public static boolean enabled() {
-        return RenderModeManager.isCameraMode() && Config.LAYERED_PARALLAX.get();
+        return RenderModeManager.isFlat2D() && Config.depthEffectEnabled() && Config.cameraFov() <= 0.5;
     }
 
-    public static void renderBackground(float partialTick) {
-        if (!enabled()) {
-            return;
-        }
+    public static boolean usesDepthPerspective() {
+        return enabled() && effectiveMode(Config.parallaxMode(), WindowXCompat.available()) == Config.ParallaxMode.DEPTH;
+    }
+
+    public static Config.ParallaxMode effectiveMode(Config.ParallaxMode requested, boolean windowXAvailable) {
+        return requested == Config.ParallaxMode.LAYERED && !windowXAvailable ? Config.ParallaxMode.DEPTH : requested;
+    }
+
+    public static boolean usesLayeredBackground() {
+        return enabled() && Config.parallaxMode() == Config.ParallaxMode.LAYERED
+                && WindowXCompat.available() && !ClientPlaneController.turning(0);
+    }
+
+    /** Frozen before projection/culling so clipping and composition always agree. */
+    public static boolean hasBackground() {
+        return frameTexture > 0 && usesLayeredBackground() && !WindowXCompat.isRendering();
+    }
+
+    public static void beginFrame(float partialTick) {
         Minecraft mc = Minecraft.getInstance();
-        LocalPlayer player = mc.player;
-        if (player == null || mc.level == null) {
+        if (enabled() && Config.parallaxMode() == Config.ParallaxMode.LAYERED
+                && !WindowXCompat.available() && !loggedFallback) {
+            loggedFallback = true;
+            LogUtils.getLogger().warn("[STM] layered parallax needs WindowX; using depth perspective instead");
+        }
+        if (!usesLayeredBackground() || mc.player == null || mc.level == null) {
+            reset();
             return;
         }
-        Camera camera = mc.gameRenderer.getMainCamera();
-        Vec3 truePosition = camera.getPosition();
-        if (anchor == null || anchor.distanceTo(truePosition) > 48.0) {
-            anchor = truePosition;
+        if (level != mc.level) {
+            reset();
+            level = mc.level;
         }
-        double ratio = Config.PARALLAX_RATIO.get();
-        Vec3 lagged = new Vec3(
-                anchor.x + (truePosition.x - anchor.x) * ratio,
-                truePosition.y,
-                anchor.z + (truePosition.z - anchor.z) * ratio);
-
-        ensureTarget(mc);
-        RenderTarget main = mc.getMainRenderTarget();
-        Vec3 savedPosition = camera.getPosition();
-        float savedYaw = camera.getYRot();
-        float savedPitch = camera.getXRot();
-        Matrix4f savedProjection = new Matrix4f(RenderSystem.getProjectionMatrix());
-
-        int[] viewport = new int[4];
-        GL11.glGetIntegerv(GL11.GL_VIEWPORT, viewport);
-
-        CameraPoseAccess access = (CameraPoseAccess) (Object) camera;
-        access.stevetomadeline$setPosition(lagged);
-        access.stevetomadeline$setRotation(savedYaw, savedPitch);
-        rendering = true;
-        try {
-            target.bindWrite(true);
-            RenderSystem.viewport(0, 0, target.width, target.height);
-            Matrix4f projection = projection(mc, camera);
-            Matrix4f view = new Matrix4f().rotationYXZ(
-                    (float) Math.toRadians(-camera.getYRot()),
-                    (float) Math.toRadians(camera.getXRot()),
-                    0.0f);
-            Matrix4f frustum = new Matrix4f(projection).mul(view);
-            RenderSystem.setProjectionMatrix(projection, VertexSorting.DISTANCE_TO_ORIGIN);
-            mc.levelRenderer.renderLevel(mc.getTimer(), true, camera, mc.gameRenderer,
-                    mc.gameRenderer.lightTexture(), frustum, projection);
-        } catch (Throwable t) {
-            LOG.warn("[STM] parallax background pass failed", t);
-        } finally {
-            rendering = false;
-            main.bindWrite(true);
-            RenderSystem.viewport(viewport[0], viewport[1], viewport[2], viewport[3]);
-            RenderSystem.setProjectionMatrix(savedProjection, VertexSorting.ORTHOGRAPHIC_Z);
-            access.stevetomadeline$setPosition(savedPosition);
-            access.stevetomadeline$setRotation(savedYaw, savedPitch);
+        int screenWidth = Math.max(1, mc.getWindow().getWidth());
+        int screenHeight = Math.max(1, mc.getWindow().getHeight());
+        double scale = Math.max(0.5, 64.0 / Math.min(screenWidth, screenHeight));
+        Settings next = new Settings((int) Math.round(screenWidth * scale), (int) Math.round(screenHeight * scale),
+                Config.ORTHO_HALF_HEIGHT.get().floatValue(), Config.cameraDistance(),
+                Config.SLICE_HALF_THICKNESS.get(), Config.PARALLAX_RATIO.get(),
+                Config.FOG_START.get(), Config.FOG_END.get(), mc.options.getEffectiveRenderDistance());
+        boolean changed = !next.equals(settings);
+        if (changed) {
+            TRACKING.reset();
         }
-        if (!logged) {
+        settings = next;
+        Vec3 position = CameraController.position(mc.player, partialTick);
+        float yaw = CameraController.yaw(mc.player);
+        ParallaxTracking.Sample sample = TRACKING.update(position.x, position.y, position.z,
+                Math.round(yaw / 90.0f), next.ratio);
+        ParallaxTracking.Pose pose = sample.pose();
+        frameTexture = WindowXCompat.prepare(new Vec3(pose.x(), pose.y(), pose.z()), yaw,
+                next.width, next.height, next.halfHeight, next.renderDistance, changed || sample.reset());
+        if (frameTexture > 0 && !logged) {
             logged = true;
-            LOG.info("[STM] layered parallax active: ratio={}, target={}x{}", ratio, target.width, target.height);
+            LogUtils.getLogger().info("[STM] layered parallax active: ratio={}, target={}x{}",
+                    next.ratio, next.width, next.height);
         }
     }
 
-    private static Matrix4f projection(Minecraft mc, Camera camera) {
-        float aspect = (float) mc.getWindow().getWidth() / Math.max(1, mc.getWindow().getHeight());
-        float halfHeight = (float) Config.ORTHO_HALF_HEIGHT.get().doubleValue();
-        float halfWidth = halfHeight * aspect;
-        double distance = Config.CAMERA_DISTANCE.get();
-        float far = (float) Math.max(512.0, distance + 512.0);
-        return new Matrix4f().ortho(-halfWidth, halfWidth, -halfHeight, halfHeight, 0.05f, far);
+    /** WindowX owns the projection object in its render context, including sky restoration. */
+    public static void clipBackground(Matrix4f projection) {
+        if (!WindowXCompat.isRenderingBackground() || settings == null) {
+            return;
+        }
+        float halfWidth = settings.halfHeight * settings.width / settings.height;
+        projection.setOrtho(-halfWidth, halfWidth, -settings.halfHeight, settings.halfHeight,
+                (float) (settings.distance + settings.slice),
+                Math.max(2048.0f, WindowXCompat.renderDistance()));
+        RenderSystem.setProjectionMatrix(projection, VertexSorting.DISTANCE_TO_ORIGIN);
     }
 
     public static void composite() {
-        if (!enabled() || target == null) {
+        if (!hasBackground()) {
             return;
         }
-        Minecraft mc = Minecraft.getInstance();
-        int[] viewport = new int[4];
-        GL11.glGetIntegerv(GL11.GL_VIEWPORT, viewport);
-        int width = Math.max(1, viewport[2]);
-        int height = Math.max(1, viewport[3]);
-
         Matrix4f previousProjection = new Matrix4f(RenderSystem.getProjectionMatrix());
+        VertexSorting previousSorting = RenderSystem.getVertexSorting();
+        ShaderInstance previousShader = RenderSystem.getShader();
+        int previousTexture = RenderSystem.getShaderTexture(0);
+        float[] previousColor = RenderSystem.getShaderColor().clone();
+        boolean depth = GL11.glIsEnabled(GL11.GL_DEPTH_TEST);
+        boolean depthMask = GL11.glGetBoolean(GL11.GL_DEPTH_WRITEMASK);
+        boolean cull = GL11.glIsEnabled(GL11.GL_CULL_FACE);
+        boolean blend = GL11.glIsEnabled(GL11.GL_BLEND);
         Matrix4fStack modelView = RenderSystem.getModelViewStack();
         modelView.pushMatrix();
-        modelView.identity();
-        RenderSystem.applyModelViewMatrix();
-        RenderSystem.setProjectionMatrix(
-                new Matrix4f().setOrtho(0.0f, width, height, 0.0f, -1000.0f, 1000.0f),
-                VertexSorting.DISTANCE_TO_ORIGIN);
-
-        int previousDepthFunc = GL11.glGetInteger(GL11.GL_DEPTH_FUNC);
-        RenderSystem.enableDepthTest();
-        RenderSystem.depthMask(true);
-        RenderSystem.depthFunc(GL11.GL_ALWAYS);
-        RenderSystem.disableCull();
-        RenderSystem.disableBlend();
         try {
-            RenderSystem.setShader(net.minecraft.client.renderer.GameRenderer::getPositionTexShader);
-            RenderSystem.setShaderTexture(0, target.getColorTextureId());
+            modelView.identity();
+            RenderSystem.applyModelViewMatrix();
+            RenderSystem.setProjectionMatrix(new Matrix4f(), VertexSorting.ORTHOGRAPHIC_Z);
+            RenderSystem.disableDepthTest();
+            RenderSystem.depthMask(false);
+            RenderSystem.disableCull();
+            RenderSystem.disableBlend();
+            RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
+            RenderSystem.setShader(GameRenderer::getPositionTexShader);
+            RenderSystem.setShaderTexture(0, frameTexture);
             BufferBuilder buffer = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
-            buffer.addVertex(0.0f, 0.0f, Z_BACKGROUND).setUv(0.0f, 1.0f);
-            buffer.addVertex(0.0f, height, Z_BACKGROUND).setUv(0.0f, 0.0f);
-            buffer.addVertex(width, height, Z_BACKGROUND).setUv(1.0f, 0.0f);
-            buffer.addVertex(width, 0.0f, Z_BACKGROUND).setUv(1.0f, 1.0f);
+            buffer.addVertex(-1.0f, -1.0f, 0.0f).setUv(0.0f, 0.0f);
+            buffer.addVertex(1.0f, -1.0f, 0.0f).setUv(1.0f, 0.0f);
+            buffer.addVertex(1.0f, 1.0f, 0.0f).setUv(1.0f, 1.0f);
+            buffer.addVertex(-1.0f, 1.0f, 0.0f).setUv(0.0f, 1.0f);
             BufferUploader.drawWithShader(buffer.buildOrThrow());
         } finally {
-            RenderSystem.depthFunc(previousDepthFunc);
-            RenderSystem.depthMask(true);
-            RenderSystem.enableDepthTest();
-            RenderSystem.enableCull();
-            RenderSystem.setProjectionMatrix(previousProjection, VertexSorting.ORTHOGRAPHIC_Z);
+            if (depth) RenderSystem.enableDepthTest(); else RenderSystem.disableDepthTest();
+            RenderSystem.depthMask(depthMask);
+            if (cull) RenderSystem.enableCull(); else RenderSystem.disableCull();
+            if (blend) RenderSystem.enableBlend(); else RenderSystem.disableBlend();
+            RenderSystem.setShaderColor(previousColor[0], previousColor[1], previousColor[2], previousColor[3]);
+            RenderSystem.setShaderTexture(0, previousTexture);
+            RenderSystem.setShader(() -> previousShader);
+            RenderSystem.setProjectionMatrix(previousProjection, previousSorting);
             modelView.popMatrix();
             RenderSystem.applyModelViewMatrix();
         }
     }
 
     public static void reset() {
-        anchor = null;
-        if (target != null) {
-            target.destroyBuffers();
-            target = null;
-        }
-    }
-
-    private static void ensureTarget(Minecraft mc) {
-        int width = Math.max(64, mc.getWindow().getWidth() / 2);
-        int height = Math.max(64, mc.getWindow().getHeight() / 2);
-        if (target == null || target.width != width || target.height != height) {
-            if (target != null) {
-                target.destroyBuffers();
-            }
-            target = new TextureTarget(width, height, true, Minecraft.ON_OSX);
-            target.setClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-        }
+        frameTexture = 0;
+        settings = null;
+        level = null;
+        TRACKING.reset();
+        WindowXCompat.stop();
+        logged = false;
     }
 }
