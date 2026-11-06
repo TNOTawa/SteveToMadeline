@@ -551,14 +551,14 @@ cd <仓库目录>
 ### 提交记录（P0 阶段）
 
 ```
-128bd8c chore: initialize NeoForge 1.21.1 project skeleton with WindowX dependency
-4925f4c docs(agents): record proxy routing for NeoForged maven
-c217761 feat(p0): add WindowX orthographic camera prototype bound to R
-b3370c3 fix(p0): ortho half-height config, camera collision clamp and live sliders
-eddd421 refactor(config): register camera options as CLIENT config
-41b5c90 feat(render): add 2D slice mode and 2.5D tilted mode with R cycling
+6ea622a chore: initialize NeoForge 1.21.1 project skeleton with WindowX dependency
+28c93b7 docs(agents): record proxy routing for NeoForged maven
+a4d1351 feat(p0): add WindowX orthographic camera prototype bound to R
+1b948fa fix(p0): ortho half-height config, camera collision clamp and live sliders
+4358f1d refactor(config): register camera options as CLIENT config
+ad1e7cb feat(render): add 2D slice mode and 2.5D tilted mode with R cycling
 ...
-9c5a0ff fix(mixin): make CameraPoseAccess a pure accessor interface
+63f1b58 fix(mixin): make CameraPoseAccess a pure accessor interface
 ```
 
 （完整历史见 `git log`。）
